@@ -1,0 +1,24 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+coverage/
+
+# env/secrets
+.env
+.env.*
+!.env.example
+
+# local data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
