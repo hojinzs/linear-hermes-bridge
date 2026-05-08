@@ -40,3 +40,7 @@ coverage/
 .evidences/**/trace*
 test-results/
 playwright-report/
+
+# bridge runtime data
+apps/bridge/data/
+

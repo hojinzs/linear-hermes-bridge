@@ -1,7 +1,10 @@
 {
   "$schema": "https://biomejs.dev/schemas/1.9.0/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-  "files": { "ignoreUnknown": true, "ignore": ["dist", "build", "**/migrations/*.sql", "data"] },
+  "files": {
+    "ignoreUnknown": true,
+    "ignore": ["dist", "build", "**/migrations/**", "data", "apps/bridge/data"]
+  },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
