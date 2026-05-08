@@ -1,0 +1,20 @@
+ ✓ apps/bridge/src/db/db.test.ts (1 test) 9ms
+ ✓ apps/bridge/src/services/agents.test.ts (4 tests) 15ms
+ ✓ apps/bridge/src/server.test.ts (1 test) 9ms
+ ✓ apps/bridge/src/routes/agents.test.ts (5 tests) 22ms
+
+ Test Files  7 passed (7)
+      Tests  26 passed (26)
+   Start at  02:25:16
+   Duration  326ms (transform 93ms, setup 0ms, collect 685ms, tests 64ms, environment 1ms, prepare 208ms)
+
+Scope: 2 of 3 workspace projects
+apps/bridge typecheck$ tsc -p tsconfig.json
+apps/web typecheck$ tsc -p tsconfig.json --noEmit
+apps/web typecheck: Done
+apps/bridge typecheck: Done
+    83 │     expect((a as Record<string, unknown>).linearClientSecret).toBeUndefined();
+  
+
+Checked 35 files in 4ms. No fixes applied.
+Found 1 warning.
