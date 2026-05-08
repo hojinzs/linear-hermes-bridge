@@ -93,5 +93,25 @@ export function agentRoutes(deps: { agentService: AgentService; publicBaseUrl: s
     return c.json({ ok: true });
   });
 
+  app.post("/:slug/test-hermes", async (c) => {
+    const slug = c.req.param("slug");
+    const agent = await agentService.getBySlugWithSecrets(slug);
+    if (!agent) return c.json({ error: "not_found" }, 404);
+    const { selectConnector } = await import("../hermes/selectConnector.js");
+    let connector: ReturnType<typeof selectConnector>;
+    try {
+      connector = selectConnector({
+        agentSlug: slug,
+        hermesConnectorType: agent.hermesConnectorType,
+        hermesConnectorConfig: agent.hermesConnectorConfig,
+      });
+    } catch (e) {
+      return c.json({ ok: false, error: (e as Error).message }, 400);
+    }
+    if (!connector.ping) return c.json({ ok: true, latencyMs: 0, note: "no ping support" });
+    const r = await connector.ping();
+    return c.json({ ok: r.ok, latencyMs: r.latencyMs, connectorType: agent.hermesConnectorType });
+  });
+
   return app;
 }

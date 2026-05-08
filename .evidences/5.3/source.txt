@@ -1,0 +1,146 @@
+export type PostCommentInput = {
+  agentRunJobId: string;
+  runAttemptId: string;
+  organizationId: string;
+  issueId: string;
+  body: string;
+  parentCommentId?: string | null;
+};
+
+export type PostCommentResult = { ok: true; commentId: string } | { ok: false; error: string };
+
+export interface LinearWriter {
+  postComment(input: PostCommentInput): Promise<PostCommentResult>;
+}
+import { randomUUID } from "node:crypto";
+import type { LinearWriter, PostCommentInput, PostCommentResult } from "./writer.js";
+import type { AppLogger } from "../logger.js";
+
+export function mockWriter(logger: AppLogger): LinearWriter {
+  return {
+    async postComment(input: PostCommentInput): Promise<PostCommentResult> {
+      const commentId = `mock_cmt_${randomUUID()}`;
+      logger.info(
+        {
+          tag: "mock.linear.comment",
+          agentRunJobId: input.agentRunJobId,
+          runAttemptId: input.runAttemptId,
+          organizationId: input.organizationId,
+          issueId: input.issueId,
+          parentCommentId: input.parentCommentId ?? null,
+          body: input.body,
+        },
+        "mock linear comment posted",
+      );
+      return { ok: true, commentId };
+    },
+  };
+}
+import { describe, it, expect } from "vitest";
+import { Writable } from "node:stream";
+import { createLogger } from "../logger.js";
+import { mockWriter } from "./mockWriter.js";
+
+describe("mockWriter", () => {
+  it("returns a synthetic comment id and logs the call", async () => {
+    const lines: string[] = [];
+    const stream = new Writable({
+      write(chunk, _e, cb) {
+        lines.push(chunk.toString());
+        cb();
+      },
+    });
+    const logger = createLogger({ level: "info", stream });
+    const w = mockWriter(logger);
+    const r = await w.postComment({
+      agentRunJobId: "arj_1",
+      runAttemptId: "ra_1",
+      organizationId: "org_dev",
+      issueId: "issue_1",
+      body: "hello",
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error();
+    expect(r.commentId.startsWith("mock_cmt_")).toBe(true);
+    expect(lines.some((l) => l.includes("mock.linear.comment"))).toBe(true);
+  });
+});
+// Stub GraphQL client. Real Linear SDK / fetch calls live here in the next session.
+// In this slice the wrapper exists so types compile; nothing calls it.
+export type LinearAccessToken = string;
+
+export class LinearGraphqlClient {
+  constructor(
+    private readonly _accessToken: LinearAccessToken,
+    private readonly _endpoint = "https://api.linear.app/graphql",
+  ) {}
+
+  async commentCreate(_input: {
+    issueId: string;
+    body: string;
+    parentId?: string | null;
+  }): Promise<{ id: string }> {
+    throw new Error(
+      "LinearGraphqlClient.commentCreate is a stub in the MVP slice; real impl pending",
+    );
+  }
+}
+import type { LinearWriter, PostCommentInput, PostCommentResult } from "./writer.js";
+import { mockWriter } from "./mockWriter.js";
+import type { AppLogger } from "../logger.js";
+import { LinearGraphqlClient } from "./client.js";
+
+export function linearWriter(deps: {
+  logger: AppLogger;
+  linearLive: boolean;
+  getAccessToken: () => Promise<string>;
+}): LinearWriter {
+  if (!deps.linearLive) return mockWriter(deps.logger);
+
+  return {
+    async postComment(input: PostCommentInput): Promise<PostCommentResult> {
+      try {
+        const token = await deps.getAccessToken();
+        const client = new LinearGraphqlClient(token);
+        const r = await client.commentCreate({
+          issueId: input.issueId,
+          body: input.body,
+          parentId: input.parentCommentId ?? null,
+        });
+        return { ok: true, commentId: r.id };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    },
+  };
+}
+diff --git a/apps/bridge/src/routes/agents.ts b/apps/bridge/src/routes/agents.ts
+index a17271a..e980a5c 100644
+--- a/apps/bridge/src/routes/agents.ts
++++ b/apps/bridge/src/routes/agents.ts
+@@ -93,5 +93,25 @@ export function agentRoutes(deps: { agentService: AgentService; publicBaseUrl: s
+     return c.json({ ok: true });
+   });
+ 
++  app.post("/:slug/test-hermes", async (c) => {
++    const slug = c.req.param("slug");
++    const agent = await agentService.getBySlugWithSecrets(slug);
++    if (!agent) return c.json({ error: "not_found" }, 404);
++    const { selectConnector } = await import("../hermes/selectConnector.js");
++    let connector;
++    try {
++      connector = selectConnector({
++        agentSlug: slug,
++        hermesConnectorType: agent.hermesConnectorType,
++        hermesConnectorConfig: agent.hermesConnectorConfig,
++      });
++    } catch (e) {
++      return c.json({ ok: false, error: (e as Error).message }, 400);
++    }
++    if (!connector.ping) return c.json({ ok: true, latencyMs: 0, note: "no ping support" });
++    const r = await connector.ping();
++    return c.json({ ok: r.ok, latencyMs: r.latencyMs, connectorType: agent.hermesConnectorType });
++  });
++
+   return app;
+ }
