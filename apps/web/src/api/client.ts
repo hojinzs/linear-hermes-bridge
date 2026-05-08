@@ -38,6 +38,18 @@ export const api = {
         method: "POST",
       }),
   },
+  installations: {
+    list: (slug: string) =>
+      req<{
+        installations: {
+          id: string;
+          organizationId: string;
+          organizationName?: string | null;
+          status: string;
+          scopes: string[];
+        }[];
+      }>(`/api/agents/${slug}/installations`),
+  },
   runJobs: {
     list: (params?: { agentSlug?: string; status?: string }) => {
       const query = new URLSearchParams();

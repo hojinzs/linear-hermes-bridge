@@ -1,0 +1,16 @@
+ Test Files  20 passed (20)
+      Tests  66 passed (66)
+   Start at  03:02:19
+   Duration  815ms (transform 503ms, setup 0ms, collect 2.48s, tests 1.50s, environment 2ms, prepare 777ms)
+
+apps/web typecheck$ tsc -p tsconfig.json --noEmit
+apps/web typecheck: Done
+apps/bridge typecheck: Done
+  
+
+ ELIFECYCLE  Command failed with exit code 1.
+  ✓   8 [chromium] › .evidences/3.4/playwright/agents-crud.spec.ts:35:5 › Agent CRUD UI › disable / enable toggles status badge (414ms)
+  ✓   9 [chromium] › .evidences/3.4/playwright/agents-crud.spec.ts:44:5 › Agent CRUD UI › agents list shows the new row (177ms)
+  ✓  10 [chromium] › .evidences/8.3/playwright/runjobs.spec.ts:7:3 › End-to-end run-jobs flow › create agent + dev install + webhook → succeeded run job visible (998ms)
+
+  10 passed (5.2s)

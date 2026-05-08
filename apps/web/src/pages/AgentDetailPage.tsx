@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Group, Stack, Title } from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconInfoCircle } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
@@ -7,9 +7,18 @@ import { type AgentListItem, api } from "../api/client";
 import { CopyableUrl } from "../components/CopyableUrl";
 import { StatusBadge } from "../components/StatusBadge";
 
+type Installation = {
+  id: string;
+  organizationId: string;
+  organizationName?: string | null;
+  status: string;
+  scopes: string[];
+};
+
 export function AgentDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const [agent, setAgent] = useState<AgentListItem | null>(null);
+  const [installs, setInstalls] = useState<Installation[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -17,6 +26,8 @@ export function AgentDetailPage() {
     try {
       const r = await api.agents.get(slug);
       setAgent(r.agent);
+      const inst = await api.installations.list(slug);
+      setInstalls(inst.installations);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -28,20 +39,19 @@ export function AgentDetailPage() {
 
   async function toggleEnabled() {
     if (!agent) return;
-    try {
-      if (agent.enabled) await api.agents.disable(agent.slug);
-      else await api.agents.enable(agent.slug);
-      await load();
-    } catch (e) {
-      notifications.show({ color: "red", message: (e as Error).message });
-    }
+    if (agent.enabled) await api.agents.disable(agent.slug);
+    else await api.agents.enable(agent.slug);
+    await load();
   }
 
   async function testHermes() {
     if (!agent) return;
     try {
       const r = await api.agents.testHermes(agent.slug);
-      notifications.show({ color: "green", message: `OK in ${r.latencyMs}ms` });
+      notifications.show({
+        color: r.ok ? "green" : "red",
+        message: `${r.ok ? "OK" : "FAIL"} in ${r.latencyMs}ms`,
+      });
     } catch (e) {
       notifications.show({ color: "red", message: (e as Error).message });
     }
@@ -80,6 +90,35 @@ export function AgentDetailPage() {
           <CopyableUrl label="Webhook" url={agent.webhookUrl} />
           <CopyableUrl label="Install" url={agent.installUrl} />
         </Stack>
+      </Card>
+      <Card withBorder>
+        <Title order={4} mb="sm">
+          Linear installations
+        </Title>
+        {installs.length === 0 ? (
+          <Text c="dimmed">No installations yet. Run pnpm dev:seed for a mock install.</Text>
+        ) : (
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Organization</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th>Scopes</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {installs.map((i) => (
+                <Table.Tr key={i.id}>
+                  <Table.Td>{i.organizationName ?? i.organizationId}</Table.Td>
+                  <Table.Td>
+                    <Badge>{i.status}</Badge>
+                  </Table.Td>
+                  <Table.Td>{i.scopes.join(", ")}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
       </Card>
     </Stack>
   );

@@ -19,7 +19,7 @@ test.describe("App shell", () => {
     await page.goto("/agents");
     await page.getByRole("link", { name: /Run Jobs/ }).click();
     await expect(page).toHaveURL(/\/run-jobs$/);
-    await expect(page.getByText("Run jobs (stub)")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Run Jobs" })).toBeVisible();
   });
 
   test("page renders real agents pages at /agents and /agents/new", async ({ page }) => {

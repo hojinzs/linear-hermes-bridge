@@ -1,0 +1,19 @@
+
+> linear-hermes-bridge@0.0.0 test:e2e /Users/steve/Projects/linear-hermes-bridge
+> playwright test
+
+
+Running 10 tests using 1 worker
+
+  ✓   1 [chromium] › .evidences/0.3/playwright/smoke.spec.ts:5:1 › home page boots with correct title (191ms)
+  ✓   2 [chromium] › .evidences/3.3/playwright/shell.spec.ts:4:3 › App shell › redirects / to /agents (173ms)
+  ✓   3 [chromium] › .evidences/3.3/playwright/shell.spec.ts:9:3 › App shell › header, nav, dev banner are visible (188ms)
+  ✓   4 [chromium] › .evidences/3.3/playwright/shell.spec.ts:18:3 › App shell › Run Jobs nav navigates to /run-jobs (202ms)
+  ✓   5 [chromium] › .evidences/3.3/playwright/shell.spec.ts:25:3 › App shell › page renders real agents pages at /agents and /agents/new (308ms)
+  ✓   6 [chromium] › .evidences/3.4/playwright/agents-crud.spec.ts:7:5 › Agent CRUD UI › empty state shows seed hint (171ms)
+  ✓   7 [chromium] › .evidences/3.4/playwright/agents-crud.spec.ts:14:5 › Agent CRUD UI › create agent via form, then list and detail show it (333ms)
+  ✓   8 [chromium] › .evidences/3.4/playwright/agents-crud.spec.ts:35:5 › Agent CRUD UI › disable / enable toggles status badge (421ms)
+  ✓   9 [chromium] › .evidences/3.4/playwright/agents-crud.spec.ts:44:5 › Agent CRUD UI › agents list shows the new row (170ms)
+  ✓  10 [chromium] › .evidences/8.3/playwright/runjobs.spec.ts:7:3 › End-to-end run-jobs flow › create agent + dev install + webhook → succeeded run job visible (903ms)
+
+  10 passed (5.1s)
