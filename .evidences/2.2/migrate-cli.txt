@@ -1,0 +1,51 @@
+=== 2.2 round-trip test ===
+
+ RUN  v2.1.9 /Users/steve/Projects/linear-hermes-bridge
+
+ ✓ apps/bridge/src/db/db.test.ts (1 test) 8ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  02:18:18
+   Duration  273ms (transform 24ms, setup 0ms, collect 122ms, tests 8ms, environment 0ms, prepare 23ms)
+
+EXIT=0
+=== full test ===
+ ✓ apps/bridge/src/config.test.ts (6 tests) 3ms
+ ✓ apps/bridge/src/server.test.ts (1 test) 3ms
+ ✓ apps/bridge/src/logger.test.ts (3 tests) 3ms
+ ✓ apps/bridge/src/db/db.test.ts (1 test) 7ms
+
+ Test Files  5 passed (5)
+      Tests  17 passed (17)
+   Start at  02:18:18
+   Duration  291ms (transform 87ms, setup 0ms, collect 257ms, tests 20ms, environment 0ms, prepare 144ms)
+
+EXIT=0
+=== typecheck ===
+Scope: 2 of 3 workspace projects
+apps/bridge typecheck$ tsc -p tsconfig.json
+apps/web typecheck$ tsc -p tsconfig.json --noEmit
+apps/web typecheck: Done
+apps/bridge typecheck: Done
+EXIT=0
+=== lint ===
+If you wish to apply the suggested (unsafe) fixes, use the command biome check --fix --unsafe
+
+Checked 30 files in 4ms. No fixes applied.
+Found 6 errors.
+check ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Some errors were emitted while running checks.
+  
+
+ ELIFECYCLE  Command failed with exit code 1.
+EXIT=0
+=== migrate CLI ===
+
+> @lhb/bridge@0.0.0 db:migrate /Users/steve/Projects/linear-hermes-bridge/apps/bridge
+> tsx src/db/migrate.ts
+
+[migrate] applied migrations from /Users/steve/Projects/linear-hermes-bridge/apps/bridge/src/db/migrations
+EXIT=0
+ls: data/: No such file or directory

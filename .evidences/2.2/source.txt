@@ -1,0 +1,66 @@
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { createDb } from "./client.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const databaseUrl = process.env.DATABASE_URL ?? "file:./data/bridge.db";
+const { db, close } = createDb(databaseUrl);
+try {
+  migrate(db, { migrationsFolder: join(__dirname, "migrations") });
+  // eslint-disable-next-line no-console
+  console.log("[migrate] applied migrations from", join(__dirname, "migrations"));
+} finally {
+  close();
+}
+import { describe, it, expect } from "vitest";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createDb, schema } from "./client.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const migrationsFolder = join(dirname(__filename), "migrations");
+
+describe("db round-trip", () => {
+  it("inserts and selects an agent", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lhb-"));
+    const url = `file:${join(dir, "test.db")}`;
+    const { db, close } = createDb(url);
+    try {
+      migrate(db, { migrationsFolder });
+      const now = new Date().toISOString();
+      db.insert(schema.agents)
+        .values({
+          id: "agt_1",
+          slug: "test",
+          displayName: "Test",
+          description: null,
+          iconUrl: null,
+          enabled: true,
+          linearClientId: "client",
+          linearClientSecretEnc: "enc",
+          linearWebhookSecretEnc: "enc",
+          requiredScopes: ["read"],
+          hermesConnectorType: "mock",
+          hermesConnectorConfigEnc: "enc",
+          permissionPolicy: { defaultMode: "plan-only" },
+          maxConcurrentRuns: 1,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+      const rows = db.select().from(schema.agents).all();
+      expect(rows.length).toBe(1);
+      expect(rows[0]?.slug).toBe("test");
+      expect(rows[0]?.requiredScopes).toEqual(["read"]);
+    } finally {
+      close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
