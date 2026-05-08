@@ -1,0 +1,155 @@
+import type { HermesRunInput, HermesRunResult } from "./types.js";
+
+export interface HermesConnector {
+  readonly type: string;
+  run(input: HermesRunInput): Promise<HermesRunResult>;
+  ping?(): Promise<{ ok: boolean; latencyMs: number }>;
+}
+export type HermesProgressEvent = {
+  type: "heartbeat" | "progress";
+  message?: string;
+  payload?: unknown;
+};
+
+export type HermesRunInput = {
+  agentRunJobId: string;
+  runAttemptId: string;
+  agentId: string;
+  prompt: string;
+  userInstruction: string;
+  hermesSessionKey: string | null;
+  signal: AbortSignal;
+  onProgress?: (ev: HermesProgressEvent) => void;
+};
+
+export type HermesRunResult =
+  | {
+      ok: true;
+      output: { summary: string; events?: unknown[] };
+      hermesSessionKey: string;
+    }
+  | {
+      ok: false;
+      error: string;
+      hermesSessionKey?: string;
+    };
+import { randomUUID } from "node:crypto";
+import type { HermesConnector } from "./connector.js";
+import type { HermesRunInput, HermesRunResult } from "./types.js";
+
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new Error("aborted"));
+    const t = setTimeout(resolve, ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(t);
+        reject(new Error("aborted"));
+      },
+      { once: true },
+    );
+  });
+}
+
+export function mockConnector(opts?: { slow?: boolean }): HermesConnector {
+  const slow = opts?.slow ?? false;
+  return {
+    type: "mock",
+    async ping() {
+      const start = Date.now();
+      await new Promise((r) => setTimeout(r, 10));
+      return { ok: true, latencyMs: Date.now() - start };
+    },
+    async run(input: HermesRunInput): Promise<HermesRunResult> {
+      const ms = slow ? 5000 : 100 + Math.floor(Math.random() * 200);
+      try {
+        input.onProgress?.({ type: "heartbeat" });
+        await delay(ms, input.signal);
+        input.onProgress?.({ type: "progress", message: "mock work done" });
+        const summary = `Mock Hermes acknowledged: ${input.userInstruction.slice(0, 80)}`;
+        return {
+          ok: true,
+          output: { summary, events: [{ kind: "mock_event", at: new Date().toISOString() }] },
+          hermesSessionKey: input.hermesSessionKey ?? `mock_${randomUUID()}`,
+        };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    },
+  };
+}
+import { describe, it, expect } from "vitest";
+import { mockConnector } from "./mockConnector.js";
+
+const baseInput = {
+  agentRunJobId: "arj_1",
+  runAttemptId: "ra_1",
+  agentId: "agt_1",
+  prompt: "system policy + user instruction",
+  userInstruction: "Summarize this issue and propose a plan",
+  hermesSessionKey: null,
+  signal: new AbortController().signal,
+};
+
+describe("mockConnector", () => {
+  it("returns ok with deterministic-ish summary based on input", async () => {
+    const c = mockConnector({ slow: false });
+    const r = await c.run(baseInput);
+    if (!r.ok) throw new Error("expected ok");
+    expect(r.output.summary.startsWith("Mock Hermes acknowledged:")).toBe(true);
+    expect(r.output.summary).toContain("Summarize");
+    expect(r.hermesSessionKey).toMatch(/^mock_/);
+  });
+
+  it("ping returns ok quickly", async () => {
+    const c = mockConnector({ slow: false });
+    const r = await c.ping!();
+    expect(r.ok).toBe(true);
+    expect(r.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("emits at least one heartbeat via onProgress", async () => {
+    const events: string[] = [];
+    const c = mockConnector({ slow: false });
+    await c.run({ ...baseInput, onProgress: (e) => events.push(e.type) });
+    expect(events).toContain("heartbeat");
+  });
+
+  it("aborts when signal is fired in slow mode", async () => {
+    const ac = new AbortController();
+    const c = mockConnector({ slow: true });
+    const promise = c.run({ ...baseInput, signal: ac.signal });
+    setTimeout(() => ac.abort(), 50);
+    const r = await promise;
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error();
+    expect(r.error).toMatch(/abort/i);
+  });
+});
+import type { HermesConnector } from "./connector.js";
+import { mockConnector } from "./mockConnector.js";
+import { localWebhookConnector } from "./localWebhookConnector.js";
+
+export type SelectConnectorInput = {
+  agentSlug: string;
+  hermesConnectorType: string;
+  hermesConnectorConfig: unknown;
+  slow?: boolean;
+};
+
+export function selectConnector(input: SelectConnectorInput): HermesConnector {
+  switch (input.hermesConnectorType) {
+    case "mock":
+      return mockConnector({ slow: input.slow ?? false });
+    case "localWebhook":
+      return localWebhookConnector(input.hermesConnectorConfig);
+    case "apiServer":
+    case "cli":
+      throw new Error(
+        `connector type "${input.hermesConnectorType}" not implemented in this slice`,
+      );
+    default:
+      throw new Error(`unknown connector type: ${input.hermesConnectorType}`);
+  }
+}

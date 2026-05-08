@@ -1,0 +1,13 @@
+ Test Files  14 passed (14)
+      Tests  51 passed (51)
+   Start at  02:43:40
+   Duration  715ms (transform 305ms, setup 0ms, collect 1.46s, tests 742ms, environment 1ms, prepare 464ms)
+
+Scope: 2 of 3 workspace projects
+apps/bridge typecheck$ tsc -p tsconfig.json
+apps/web typecheck$ tsc -p tsconfig.json --noEmit
+apps/web typecheck: Done
+apps/bridge typecheck: Done
+
+Checked 72 files in 6ms. No fixes applied.
+Found 1 warning.
