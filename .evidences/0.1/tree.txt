@@ -1,0 +1,117 @@
+ls -la
+total 72
+drwxr-xr-x  16 steve  staff   512 May  9 01:56 .
+drwxr-xr-x@  5 steve  staff   160 May  9 00:45 ..
+drwxr-xr-x@  3 steve  staff    96 May  9 01:44 .claude
+drwxr-xr-x@  3 steve  staff    96 May  9 01:56 .evidences
+drwxr-xr-x  14 steve  staff   448 May  9 01:49 .git
+-rw-r--r--@  1 steve  staff   381 May  9 01:53 .gitignore
+-rw-r--r--@  1 steve  staff     3 May  9 01:53 .nvmrc
+drwxr-xr-x@  3 steve  staff    96 May  9 01:54 .pnpm-store
+-rw-r--r--   1 steve  staff  1066 May  9 00:45 LICENSE
+-rw-r--r--   1 steve  staff  3776 May  9 00:45 README.md
+-rw-r--r--@  1 steve  staff   652 May  9 01:53 biome.json
+drwxr-xr-x  13 steve  staff   416 May  9 01:10 docs
+-rw-r--r--@  1 steve  staff   841 May  9 01:53 package.json
+-rw-r--r--@  1 steve  staff    23 May  9 01:53 pnpm-workspace.yaml
+-rw-r--r--@  1 steve  staff   635 May  9 01:53 tsconfig.base.json
+-rw-r--r--@  1 steve  staff   253 May  9 01:53 vitest.config.ts
+
+cat package.json
+{
+  "name": "linear-hermes-bridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "tsx scripts/dev-bootstrap.ts && pnpm -r --parallel run dev",
+    "dev:seed": "tsx scripts/dev-seed.ts",
+    "smoke": "tsx scripts/smoke-webhook.ts",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "db:migrate": "pnpm --filter @lhb/bridge run db:migrate",
+    "db:generate": "pnpm --filter @lhb/bridge run db:generate"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "@types/node": "^22.7.0"
+  }
+}
+
+cat pnpm-workspace.yaml
+packages:
+  - "apps/*"
+
+cat tsconfig.base.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "allowImportingTsExtensions": false,
+    "noEmit": true
+  },
+  "exclude": ["node_modules", "dist", "build"]
+}
+
+cat biome.json
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.0/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "ignoreUnknown": true, "ignore": ["dist", "build", "**/migrations/*.sql", "data"] },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": { "noNonNullAssertion": "warn" },
+      "suspicious": { "noExplicitAny": "warn" }
+    }
+  },
+  "javascript": {
+    "formatter": { "quoteStyle": "double", "semicolons": "always", "trailingCommas": "all" }
+  }
+}
+
+cat vitest.config.ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    globals: false,
+    environment: "node",
+    include: ["apps/**/src/**/*.{test,spec}.ts"],
+    coverage: { provider: "v8", reporter: ["text", "lcov"] },
+  },
+});
+
+cat .nvmrc
+22

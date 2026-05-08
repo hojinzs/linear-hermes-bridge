@@ -1,0 +1,21 @@
+=== pnpm lint ===
+
+> linear-hermes-bridge@0.0.0 lint /Users/steve/Projects/linear-hermes-bridge
+> biome check .
+
+Checked 5 files in 10ms. No fixes applied.
+EXIT=0
+=== pnpm test ===
+
+> linear-hermes-bridge@0.0.0 test /Users/steve/Projects/linear-hermes-bridge
+> vitest run
+
+
+ RUN  v2.1.9 /Users/steve/Projects/linear-hermes-bridge
+
+include: apps/**/src/**/*.{test,spec}.ts
+exclude:  **/node_modules/**, **/dist/**, **/cypress/**, **/.{idea,git,cache,output,temp}/**, **/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*
+
+No test files found, exiting with code 1
+ ELIFECYCLE  Test failed. See above for more details.
+EXIT=1
