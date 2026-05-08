@@ -1,0 +1,208 @@
+== apps/bridge/src/routes/runJobs.ts ==
+import { Hono } from "hono";
+import { and, eq, desc, asc } from "drizzle-orm";
+import { type DbClient, schema } from "../db/client.js";
+
+export function runJobsRoutes(deps: { db: DbClient }) {
+  const { db } = deps;
+  const app = new Hono();
+
+  app.get("/", (c) => {
+    const agentSlug = c.req.query("agentSlug");
+    const status = c.req.query("status");
+    const conditions: Parameters<typeof and>[number][] = [];
+    if (agentSlug) {
+      const ag = db.select().from(schema.agents).where(eq(schema.agents.slug, agentSlug)).get();
+      if (!ag) return c.json({ jobs: [] });
+      conditions.push(eq(schema.agentRunJobs.agentId, ag.id));
+    }
+    if (status) conditions.push(eq(schema.agentRunJobs.status, status));
+    const where = conditions.length === 0 ? undefined : and(...conditions);
+    const rows = db
+      .select()
+      .from(schema.agentRunJobs)
+      .where(where as never)
+      .orderBy(desc(schema.agentRunJobs.createdAt))
+      .limit(100)
+      .all();
+    return c.json({ jobs: rows });
+  });
+
+  app.get("/:id", (c) => {
+    const id = c.req.param("id");
+    const job = db.select().from(schema.agentRunJobs).where(eq(schema.agentRunJobs.id, id)).get();
+    if (!job) return c.json({ error: "not_found" }, 404);
+    const events = db
+      .select()
+      .from(schema.runnerEvents)
+      .where(eq(schema.runnerEvents.agentRunJobId, id))
+      .orderBy(asc(schema.runnerEvents.sequence))
+      .all();
+    const attempts = db
+      .select()
+      .from(schema.runAttempts)
+      .where(eq(schema.runAttempts.agentRunJobId, id))
+      .orderBy(asc(schema.runAttempts.attemptNumber))
+      .all();
+    return c.json({ job, events, attempts });
+  });
+
+  app.post("/:id/cancel", (c) => {
+    const id = c.req.param("id");
+    const job = db.select().from(schema.agentRunJobs).where(eq(schema.agentRunJobs.id, id)).get();
+    if (!job) return c.json({ error: "not_found" }, 404);
+    if (job.status === "succeeded" || job.status === "failed" || job.status === "canceled") {
+      return c.json({ error: "terminal", status: job.status }, 409);
+    }
+    const now = new Date().toISOString();
+    db.update(schema.agentRunJobs)
+      .set({ cancelRequestedAt: now, updatedAt: now })
+      .where(eq(schema.agentRunJobs.id, id))
+      .run();
+    return c.json({ ok: true, agentRunJobId: id, status: job.status, cancelRequestedAt: now }, 202);
+  });
+
+  return app;
+}
+
+== apps/bridge/src/routes/runJobs.test.ts ==
+import { describe, it, expect, beforeEach } from "vitest";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { Hono } from "hono";
+import { randomBytes } from "node:crypto";
+import { createDb, schema } from "../db/client.js";
+import { createAgentService } from "../services/agents.js";
+import { runJobsRoutes } from "./runJobs.js";
+
+const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "..", "db", "migrations");
+
+async function makeApp() {
+  const dir = mkdtempSync(join(tmpdir(), "lhb-rj-"));
+  const { db } = createDb(`file:${join(dir, "t.db")}`);
+  migrate(db, { migrationsFolder });
+  const svc = createAgentService({ db, encryptionKey: randomBytes(32) });
+  const a = await svc.create({
+    slug: "mock",
+    displayName: "Mock",
+    description: null,
+    iconUrl: null,
+    linearClientId: "c",
+    linearClientSecret: "cs",
+    linearWebhookSecret: "ws",
+    requiredScopes: ["read"],
+    hermesConnectorType: "mock",
+    hermesConnectorConfig: { kind: "mock" },
+    permissionPolicy: {},
+  });
+  const now = new Date().toISOString();
+  db.insert(schema.agentRunJobs)
+    .values({
+      id: "arj_a",
+      agentId: a.id,
+      agentSessionId: null,
+      webhookDeliveryId: null,
+      dedupeKey: "k1",
+      triggerType: "mention",
+      status: "queued",
+      priority: 0,
+      scheduledAt: now,
+      claimedBy: null,
+      claimedAt: null,
+      cancelRequestedAt: null,
+      attemptCount: 0,
+      input: { trigger: { type: "mention" } },
+      output: null,
+      error: null,
+      maxAttempts: 3,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+  const app = new Hono();
+  app.route("/api/agent-run-jobs", runJobsRoutes({ db }));
+  return { app, jobId: "arj_a" };
+}
+
+describe("run-jobs routes", () => {
+  let ctx: Awaited<ReturnType<typeof makeApp>>;
+  beforeEach(async () => {
+    ctx = await makeApp();
+  });
+
+  it("lists jobs", async () => {
+    const res = await ctx.app.request("/api/agent-run-jobs");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { jobs: { id: string }[] };
+    expect(body.jobs.length).toBeGreaterThan(0);
+  });
+
+  it("gets a single job with events", async () => {
+    const res = await ctx.app.request(`/api/agent-run-jobs/${ctx.jobId}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { job: { id: string }; events: unknown[] };
+    expect(body.job.id).toBe(ctx.jobId);
+    expect(Array.isArray(body.events)).toBe(true);
+  });
+
+  it("returns 404 for unknown job", async () => {
+    const res = await ctx.app.request("/api/agent-run-jobs/nope");
+    expect(res.status).toBe(404);
+  });
+
+  it("cancels a queued job", async () => {
+    const res = await ctx.app.request(`/api/agent-run-jobs/${ctx.jobId}/cancel`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { ok: boolean; cancelRequestedAt: string };
+    expect(body.ok).toBe(true);
+    expect(body.cancelRequestedAt).toBeDefined();
+  });
+});
+
+== git diff -- apps/bridge/src/server.ts ==
+diff --git a/apps/bridge/src/server.ts b/apps/bridge/src/server.ts
+index e250204..778cbf4 100644
+--- a/apps/bridge/src/server.ts
++++ b/apps/bridge/src/server.ts
+@@ -4,6 +4,8 @@ import type { AppContext } from "./appContext.js";
+ import { agentRoutes } from "./routes/agents.js";
+ import { healthRoutes } from "./routes/health.js";
+ import { linearWebhookRoutes } from "./routes/linearWebhook.js";
++import { oauthRoutes } from "./routes/oauth.js";
++import { runJobsRoutes } from "./routes/runJobs.js";
+ 
+ export function createServer(ctx: AppContext) {
+   const app = new Hono();
+@@ -14,11 +16,26 @@ export function createServer(ctx: AppContext) {
+   app.route("/", healthRoutes());
+   app.route(
+     "/api/agents",
+-    agentRoutes({ agentService: ctx.agentService, publicBaseUrl: ctx.config.publicBaseUrl }),
++    agentRoutes({
++      agentService: ctx.agentService,
++      publicBaseUrl: ctx.config.publicBaseUrl,
++      db: ctx.db,
++    }),
+   );
+   app.route(
+     "/webhooks/linear",
+     linearWebhookRoutes({ db: ctx.db, agentService: ctx.agentService }),
+   );
++  app.route("/api/agent-run-jobs", runJobsRoutes({ db: ctx.db }));
++  app.route(
++    "/oauth",
++    oauthRoutes({
++      db: ctx.db,
++      agentService: ctx.agentService,
++      publicBaseUrl: ctx.config.publicBaseUrl,
++      linearLive: ctx.config.linearLive,
++      encryptionKey: ctx.config.encryptionKey,
++    }),
++  );
+   return app;
+ }
