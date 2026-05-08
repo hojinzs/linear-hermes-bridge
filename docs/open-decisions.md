@@ -71,3 +71,14 @@ Options:
 **Default:** `linear-hermes-bridge`.
 
 **Rationale:** Clear and searchable. A branded name can come later.
+
+
+## D9. Queue / Runner / Worker terminology
+
+**Question:** Should the execution component be documented as a generic Worker or as an Agent Runner?
+
+**Default:** Use `Agent Run Queue` + `Orchestrator` + `Agent Runner`; reserve `Worker Process` for deployment/runtime hosting.
+
+**Rationale:** Agent Runner better describes the semantic Hermes session loop: prompt envelope construction, session continuation, connector invocation, progress events, cancellation, and final output mapping. Worker remains useful as an infra term for the process/container that polls the queue and hosts runners.
+
+**Decision needed from Steve:** None for MVP. This is accepted as the documentation default unless implementation constraints later prove otherwise.

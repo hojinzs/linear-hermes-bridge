@@ -13,7 +13,7 @@ Run a Docker Compose stack that receives Linear Agent webhooks over a Cloudflare
 1. **Homelab-friendly Docker deployment** — `docker compose up -d`, persistent local volume, SQLite by default.
 2. **Public tunnel boundary** — public OAuth/webhook/Web UI address via Cloudflare Tunnel/ngrok/Tailscale Funnel; Hermes itself remains private and local-only.
 3. **Multi-agent routing** — one bridge instance can manage many Linear OAuth apps and route each to a separate Hermes profile, endpoint, or command policy.
-4. **TypeScript-first stack** — bridge service, worker queue, Web UI, and Linear integration should be implemented primarily in TypeScript.
+4. **TypeScript-first stack** — bridge service, Agent Run Queue, Agent Runner, Web UI, and Linear integration should be implemented primarily in TypeScript.
 
 ## Documentation map
 
@@ -36,7 +36,7 @@ Run a Docker Compose stack that receives Linear Agent webhooks over a Cloudflare
 | HTTP server | Fastify or Hono | Hono is attractive for Cloudflare-style portability; Fastify is strong for self-hosted Node. |
 | Web UI | React + Vite | Lightweight admin UI for agent registry and install status. |
 | Database | SQLite + Drizzle ORM | Homelab-friendly single-file persistence. |
-| Background jobs | In-process queue first, BullMQ optional later | Webhooks must ACK quickly; execution should happen async. |
+| Agent execution | In-process Agent Run Queue + Agent Runner first, BullMQ optional later | Webhooks must ACK quickly; Hermes execution should happen async. Keep Worker Process as deployment terminology only. |
 | Tunnel | Cloudflare Tunnel documented, alternatives allowed | Bridge receives public traffic; Hermes does not. |
 | Hermes connection | Local HTTP API/webhook first, CLI fallback | Keep Hermes private on localhost/LAN. |
 
@@ -49,6 +49,8 @@ Linear / Browser
   -> local-only Hermes endpoint/CLI
   -> Linear comment or Agent Activity response
 ```
+
+Internal decomposition (Agent Run Queue → Orchestrator → Agent Runner → Hermes connector) is described in [`docs/architecture.md`](docs/architecture.md).
 
 ## Repository state
 

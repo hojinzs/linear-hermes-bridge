@@ -10,7 +10,7 @@ Expose only the minimum public surface required for Linear OAuth, Linear webhook
 Untrusted public internet
   -> Tunnel/reverse proxy
   -> Bridge public endpoints
-  -> Bridge private storage/job worker
+  -> Bridge private storage / Agent Run Queue / Agent Runner
   -> Local Hermes endpoint/CLI
 ```
 
@@ -33,7 +33,7 @@ Linear webhook receiver must:
 1. Read the raw request body before parsing JSON.
 2. Compute HMAC-SHA256 using the agent's Linear webhook secret.
 3. Compare against the `linear-signature` header using constant-time comparison.
-4. Reject invalid signatures before enqueueing jobs.
+4. Reject invalid signatures before enqueueing Agent Run Jobs.
 
 Pseudo-code:
 
@@ -128,7 +128,7 @@ Webhook endpoint should include:
 - per-agent rate limits,
 - request body size limit,
 - idempotency using delivery ID or payload hash,
-- retry-safe job creation.
+- retry-safe Agent Run Job creation.
 
 ## Secret redaction
 

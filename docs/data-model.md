@@ -21,18 +21,39 @@ agents
   1 -> many linear_installations
   1 -> many agent_sessions
   1 -> many webhook_deliveries
-  1 -> many jobs
+  1 -> many agent_run_jobs
 
 linear_installations
   many -> 1 agents
 
 agent_sessions
   many -> 1 agents
+  1 -> many agent_run_jobs
 
-jobs
+webhook_deliveries
+  many -> 1 agents
+  1 -> zero/one agent_run_jobs
+
+agent_run_jobs
   many -> 1 agents
   optional -> 1 agent_sessions
+  1 -> many run_attempts
+
+run_attempts
+  many -> 1 agent_run_jobs
+  many -> 1 agents
+  many -> 1 agent_sessions
+  1 -> many runner_events
 ```
+
+## Naming rule
+
+Do not collapse queue, runner, and worker concepts into a single `jobs` abstraction.
+
+- `agent_run_jobs` represent durable queued work accepted from Linear.
+- `run_attempts` represent each execution attempt for a queued job.
+- `runner_events` represent the Agent Runner lifecycle/progress stream.
+- A future Worker Process is a deployment host and does not need its own table unless multi-node runner registration becomes necessary.
 
 ## Tables
 
@@ -55,6 +76,7 @@ Represents one Linear app/Hermes target mapping.
 | hermes_connector_type | text | `localWebhook`, `apiServer`, `cli`. |
 | hermes_connector_config_enc | text | Encrypted JSON for endpoint/secret/command. |
 | permission_policy | text JSON | Per-agent safety rules. |
+| max_concurrent_runs | integer | Per-agent concurrency limit; default `1` for MVP. |
 | created_at | text datetime | ISO 8601. |
 | updated_at | text datetime | ISO 8601. |
 
@@ -142,9 +164,9 @@ Unique index:
 
 If Linear does not provide a delivery ID in some payloads, use `payload_hash` plus a time window.
 
-### jobs
+### agent_run_jobs
 
-Background processing jobs created from accepted webhooks.
+Durable queued Agent Run Jobs created from accepted webhooks. This table is the MVP Agent Run Queue.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -152,15 +174,101 @@ Background processing jobs created from accepted webhooks.
 | agent_id | text | FK agents.id. |
 | agent_session_id | text nullable | FK agent_sessions.id. |
 | webhook_delivery_id | text nullable | FK webhook_deliveries.id. |
-| type | text | `run_hermes`, `post_linear_response`, `refresh_token`. |
-| status | text | `queued`, `running`, `succeeded`, `failed`, `retrying`. |
-| attempt_count | integer | Retry counter. |
-| input | text JSON | Non-secret job input. |
-| output | text JSON nullable | Non-secret result summary. |
-| error | text nullable | Redacted error. |
-| available_at | text datetime | For retry scheduling. |
+| dedupe_key | text unique | Stable key from delivery/session/prompt to prevent duplicate Hermes runs. See "Dedupe key construction" below. |
+| trigger_type | text | `agent_session_created`, `agent_session_prompted`, `mention`, `delegation`. |
+| status | text | `queued`, `claimed`, `running`, `awaiting_input`, `succeeded`, `failed`, `canceled`. See "Job vs. attempt status invariants". |
+| priority | integer | Higher value runs first; default `0`. |
+| scheduled_at | text datetime | Earliest time this job may be claimed. A delayed `queued` row with `scheduled_at > now()` is the on-disk representation of "between attempts" / retry backoff. |
+| claimed_by | text nullable | Agent Runner instance id (`runner_id` of the active attempt). Single source of truth for who currently owns the job. |
+| claimed_at | text datetime nullable | Claim timestamp. |
+| cancel_requested_at | text datetime nullable | Set when an operator requests cancellation. The Orchestrator and Agent Runner observe this column to abort the active attempt. |
+| attempt_count | integer | Denormalized count of `run_attempts` rows. Updated by the Orchestrator to avoid JOINing on the queue scan path. |
+| input | text JSON | Non-secret normalized trigger/context summary. See `docs/api-contracts.md` "Internal Agent Run Job payload" for the schema. |
+| output | text JSON nullable | Non-secret final result summary. |
+| error | text nullable | Mirror of the latest failed `run_attempts.error` for ops display. The Orchestrator updates this on attempt failure; never read it as truth — `run_attempts` is canonical. |
+| max_attempts | integer | Default `3`. |
 | created_at | text datetime | ISO 8601. |
 | updated_at | text datetime | ISO 8601. |
+
+Indexes:
+
+```text
+(status, priority DESC, scheduled_at ASC)   -- claim scan: ORDER BY priority DESC, scheduled_at ASC
+(agent_id, status)
+(agent_session_id, created_at)
+(cancel_requested_at) WHERE cancel_requested_at IS NOT NULL
+```
+
+#### Dedupe key construction
+
+The bridge derives `dedupe_key` from the most specific identifier available, in this order:
+
+1. `linear:{agent_id}:{provider_delivery_id}` when Linear sends a stable delivery ID.
+2. `session:{agent_id}:{linear_agent_session_id}:{prompt_hash}` for AgentSession `prompted` events without a delivery ID.
+3. `payload:{agent_id}:{payload_hash}` as a last-resort fallback (paired with the `webhook_deliveries` time-window check).
+
+`webhook_deliveries.(agent_id, provider_delivery_id)` UNIQUE protects against duplicate HTTP delivery; `agent_run_jobs.dedupe_key` UNIQUE protects against duplicate logical Hermes runs. They serve different boundaries and must both exist.
+
+#### Job vs. attempt status invariants
+
+`agent_run_jobs.status` is the queue-level lifecycle. `run_attempts.status` is the per-execution lifecycle. The Orchestrator is the only writer that transitions both; the Agent Runner only writes attempt status.
+
+| Job status | Meaning | Allowed attempt status |
+| --- | --- | --- |
+| `queued` | Eligible for claim once `scheduled_at <= now()`. Used for both first-run and retry backoff. | none, or last attempt is terminal (`failed` / `timed_out`) and `attempt_count < max_attempts`. |
+| `claimed` | Orchestrator has reserved the job; the `run_attempts` row has not been inserted yet (transient, bounded by `claim_lease_ms`). | none for this attempt yet. |
+| `running` | An attempt is actively executing the Hermes session. | latest attempt is `running`. |
+| `awaiting_input` | Hermes returned an interrupt requiring human/Linear input. | latest attempt is `awaiting_input`. |
+| `succeeded` | Terminal. | latest attempt is `succeeded`. |
+| `failed` | Terminal. `attempt_count >= max_attempts` and last attempt is `failed`/`timed_out`. | latest attempt is `failed` or `timed_out`. |
+| `canceled` | Terminal. `cancel_requested_at` was set and acknowledged. | latest attempt is `canceled`. |
+
+Rules:
+
+- The Orchestrator must update `agent_run_jobs.status` in the same transaction as the corresponding `run_attempts` insert/update so the two never disagree.
+- A retry transitions the job back to `queued` with a new `scheduled_at`; it does not introduce a separate `retrying` status.
+- `cancel_requested_at` may be set in any non-terminal job state. The Orchestrator transitions to `canceled` after the active attempt finalizes.
+
+### run_attempts
+
+One Agent Runner execution attempt for an Agent Run Job.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | text primary key | UUID/cuid. |
+| agent_run_job_id | text | FK agent_run_jobs.id. |
+| agent_id | text | FK agents.id for easier querying. |
+| agent_session_id | text nullable | FK agent_sessions.id. |
+| attempt_number | integer | Starts at `1`. |
+| runner_id | text nullable | Agent Runner instance id. In multi-node deployments this also identifies the host process; a separate `worker_id` is intentionally omitted for MVP and may be added when the deployment splits Worker Process from Agent Runner. |
+| status | text | `running`, `awaiting_input`, `succeeded`, `failed`, `canceled`, `timed_out`. The row is created in `running` once the runner has opened (or resumed) the Hermes session. |
+| hermes_session_key | text nullable | Session started/resumed by the connector. |
+| started_at | text datetime | ISO 8601. |
+| heartbeat_at | text datetime nullable | Updated while running. The Orchestrator considers an attempt stale when `heartbeat_at < now() - heartbeat_timeout_ms` (default `60000`; see `docs/architecture.md` for tuning). |
+| ended_at | text datetime nullable | ISO 8601. |
+| result | text JSON nullable | Non-secret runner result. |
+| error | text nullable | Redacted error details. |
+
+Unique constraint:
+
+```text
+(agent_run_job_id, attempt_number)
+```
+
+### runner_events
+
+Structured Agent Runner progress and lifecycle events.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | text primary key | UUID/cuid. |
+| run_attempt_id | text | FK run_attempts.id. |
+| agent_run_job_id | text | FK agent_run_jobs.id. |
+| agent_session_id | text nullable | FK agent_sessions.id. |
+| event_type | text | `claimed`, `context_loaded`, `prompt_built`, `hermes_started`, `progress`, `approval_required`, `linear_response_posted`, `completed`, `failed`, `canceled`, `timed_out`, `retry_scheduled`. Terminal events (`completed`/`failed`/`canceled`/`timed_out`) must mirror the final `run_attempts.status` for the same attempt. |
+| sequence | integer | Monotonic per attempt. |
+| payload | text JSON | Redacted event payload. |
+| created_at | text datetime | ISO 8601. |
 
 ## Configuration JSON examples
 
