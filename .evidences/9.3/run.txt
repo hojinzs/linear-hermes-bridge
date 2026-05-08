@@ -1,0 +1,18 @@
+=== smoke (good) ===
+[smoke] agent_run_job arj_QJHX_Aw9KJUModCm accepted
+[smoke] runner_events: claimed → context_loaded → prompt_built → hermes_started → progress
+[smoke] runner_events: claimed → context_loaded → prompt_built → hermes_started → progress → progress → linear_response_posted → completed
+[smoke] final status: succeeded
+EXIT=0
+=== smoke --bad-sig ===
+[smoke] bad signature correctly rejected with 401
+EXIT=0
+=== smoke (duplicate) ===
+[smoke] agent_run_job arj_QJHX_Aw9KJUModCm duplicate
+[smoke] duplicate delivery, no new job
+EXIT=0
+=== smoke --slow (unique deliveryId) ===
+[smoke] agent_run_job arj_DXLOlV_Er6sJGVn7 accepted
+[smoke] runner_events: claimed → context_loaded → prompt_built → hermes_started → progress → progress → linear_response_posted → completed
+[smoke] final status: succeeded
+EXIT=0
