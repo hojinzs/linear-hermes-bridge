@@ -1,0 +1,5 @@
+- Files created:
+  - `apps/bridge/src/logger.ts`
+  - `apps/bridge/src/logger.test.ts`
+- Deviations: none.
+- TDD note: test file was written before implementation file.

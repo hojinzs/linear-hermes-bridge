@@ -1,0 +1,33 @@
+=== test ===
+
+> linear-hermes-bridge@0.0.0 test /Users/steve/Projects/linear-hermes-bridge
+> vitest run
+
+
+ RUN  v2.1.9 /Users/steve/Projects/linear-hermes-bridge
+
+ ✓ apps/bridge/src/crypto/encryption.test.ts (6 tests) 2ms
+ ✓ apps/bridge/src/config.test.ts (6 tests) 4ms
+ ✓ apps/bridge/src/logger.test.ts (3 tests) 3ms
+ ✓ apps/bridge/src/server.test.ts (1 test) 4ms
+
+ Test Files  4 passed (4)
+      Tests  16 passed (16)
+   Start at  02:14:38
+   Duration  164ms (transform 46ms, setup 0ms, collect 93ms, tests 13ms, environment 0ms, prepare 108ms)
+
+EXIT=0
+=== typecheck ===
+Scope: 2 of 3 workspace projects
+apps/bridge typecheck$ tsc -p tsconfig.json
+apps/web typecheck$ tsc -p tsconfig.json --noEmit
+apps/bridge typecheck: Done
+apps/web typecheck: Done
+EXIT=0
+=== lint ===
+
+> linear-hermes-bridge@0.0.0 lint /Users/steve/Projects/linear-hermes-bridge
+> biome check .
+
+Checked 23 files in 2ms. No fixes applied.
+EXIT=0
