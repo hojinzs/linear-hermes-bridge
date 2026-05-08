@@ -44,3 +44,7 @@ playwright-report/
 # bridge runtime data
 apps/bridge/data/
 
+# e2e ephemeral data
+.evidences/_e2e/
+.evidences/_playwright-report/
+

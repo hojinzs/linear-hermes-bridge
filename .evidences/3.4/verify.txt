@@ -1,0 +1,23 @@
+ Test Files  7 passed (7)
+      Tests  26 passed (26)
+   Start at  02:30:39
+   Duration  331ms (transform 74ms, setup 0ms, collect 690ms, tests 64ms, environment 1ms, prepare 265ms)
+
+Scope: 2 of 3 workspace projects
+apps/bridge typecheck$ tsc -p tsconfig.json
+apps/web typecheck$ tsc -p tsconfig.json --noEmit
+apps/web typecheck: Done
+apps/bridge typecheck: Done
+  
+
+ ELIFECYCLE  Command failed with exit code 1.
+
+        pnpm exec playwright show-trace test-results/3.4-playwright-agents-crud-089b4-empty-state-shows-seed-hint-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › .evidences/3.4/playwright/agents-crud.spec.ts:6:3 › Agent CRUD UI › empty state shows seed hint 
+  3 did not run
+  5 passed (8.3s)
+ ELIFECYCLE  Command failed with exit code 1.

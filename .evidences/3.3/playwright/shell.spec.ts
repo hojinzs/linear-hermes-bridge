@@ -22,10 +22,11 @@ test.describe("App shell", () => {
     await expect(page.getByText("Run jobs (stub)")).toBeVisible();
   });
 
-  test("page renders stubs at /agents and /agents/new", async ({ page }) => {
+  test("page renders real agents pages at /agents and /agents/new", async ({ page }) => {
+    // After Task 3.4, stubs are replaced with real pages. Validate landmark headings.
     await page.goto("/agents");
-    await expect(page.getByText("Agents list (stub)")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
     await page.goto("/agents/new");
-    await expect(page.getByText("Agent create (stub)")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "New agent" })).toBeVisible();
   });
 });
