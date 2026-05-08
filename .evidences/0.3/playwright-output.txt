@@ -1,0 +1,10 @@
+
+> linear-hermes-bridge@0.0.0 test:e2e /Users/steve/Projects/linear-hermes-bridge
+> playwright test
+
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › .evidences/0.3/playwright/smoke.spec.ts:3:1 › home page renders Mantine placeholder (287ms)
+
+  1 passed (2.1s)

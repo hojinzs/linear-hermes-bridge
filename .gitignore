@@ -34,6 +34,9 @@ data/
 coverage/
 .vitest/
 .evidences/**/playwright-report/
+.evidences/_playwright-report/
 .evidences/**/*.zip
 .evidences/**/*.webm
 .evidences/**/trace*
+test-results/
+playwright-report/

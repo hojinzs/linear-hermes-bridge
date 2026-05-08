@@ -1,0 +1,31 @@
+=== curl localhost:5173 ===
+HTTP/1.1 200 OK
+Vary: Origin
+Content-Type: text/html
+Cache-Control: no-cache
+Etag: W/"23c-GjGNcTE79wOBHRSTKWxEWrZdGRo"
+Date: Fri, 08 May 2026 17:07:24 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Content-Length: 572
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <script type="module">import { injectIntoGlobalHook } from "/@react-refresh";
+injectIntoGlobalHook(window);
+window.$RefreshReg$ = () => {};
+window.$RefreshSig$ = () => (type) => type;</script>
+
+    <script type="module" src="/@vite/client"></script>
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Linear Hermes Bridge — Admin</title>
+  </head>
+  <body>
+---
+=== HTML body grep ===
+    <title>Linear Hermes Bridge — Admin</title>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
