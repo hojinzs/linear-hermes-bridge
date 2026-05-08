@@ -1,0 +1,298 @@
+import type { Config } from "./config.js";
+import type { DbClient } from "./db/client.js";
+import type { AppLogger } from "./logger.js";
+import type { AgentService } from "./services/agents.js";
+
+export type AppContext = {
+  config: Config;
+  db: DbClient;
+  logger: AppLogger;
+  agentService: AgentService;
+};
+import { Hono } from "hono";
+
+export function healthRoutes() {
+  const app = new Hono();
+  app.get("/healthz", (c) =>
+    c.json({ ok: true, service: "linear-hermes-bridge", version: "0.0.0" }),
+  );
+  app.get("/readyz", (c) => c.json({ ok: true, database: "ok" }));
+  return app;
+}
+import { Hono } from "hono";
+import { z } from "zod";
+import type { AgentService } from "../services/agents.js";
+
+const ConnectorTypeSchema = z.enum(["mock", "localWebhook", "apiServer", "cli"]);
+
+const CreateBody = z.object({
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/, "slug must be lowercase alphanumeric or hyphen"),
+  displayName: z.string().min(1),
+  description: z.string().nullable().optional(),
+  iconUrl: z.string().url().nullable().optional(),
+  linearClientId: z.string().min(1),
+  linearClientSecret: z.string().min(1),
+  linearWebhookSecret: z.string().min(1),
+  requiredScopes: z.array(z.string()).min(1),
+  hermesConnectorType: ConnectorTypeSchema,
+  hermesConnectorConfig: z.unknown(),
+  permissionPolicy: z.unknown(),
+  maxConcurrentRuns: z.number().int().positive().optional(),
+});
+
+export function agentRoutes(deps: { agentService: AgentService; publicBaseUrl: string }) {
+  const { agentService, publicBaseUrl } = deps;
+  const base = publicBaseUrl.replace(/\/+$/, "");
+  const app = new Hono();
+
+  function withUrls(slug: string, agent: unknown) {
+    return {
+      ...((agent ?? {}) as Record<string, unknown>),
+      callbackUrl: `${base}/oauth/callback/${slug}`,
+      webhookUrl: `${base}/webhooks/linear/${slug}`,
+      installUrl: `${base}/oauth/authorize/${slug}`,
+    };
+  }
+
+  app.get("/", async (c) => {
+    const agents = await agentService.listSummaries();
+    return c.json({ agents: agents.map((a) => withUrls(a.slug, a)) });
+  });
+
+  app.post("/", async (c) => {
+    const json = await c.req.json().catch(() => null);
+    const parsed = CreateBody.safeParse(json);
+    if (!parsed.success) {
+      return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+    }
+    try {
+      const created = await agentService.create({
+        slug: parsed.data.slug,
+        displayName: parsed.data.displayName,
+        description: parsed.data.description ?? null,
+        iconUrl: parsed.data.iconUrl ?? null,
+        linearClientId: parsed.data.linearClientId,
+        linearClientSecret: parsed.data.linearClientSecret,
+        linearWebhookSecret: parsed.data.linearWebhookSecret,
+        requiredScopes: parsed.data.requiredScopes,
+        hermesConnectorType: parsed.data.hermesConnectorType,
+        hermesConnectorConfig: parsed.data.hermesConnectorConfig,
+        permissionPolicy: parsed.data.permissionPolicy,
+        ...(parsed.data.maxConcurrentRuns !== undefined && {
+          maxConcurrentRuns: parsed.data.maxConcurrentRuns,
+        }),
+      });
+      return c.json({ agent: withUrls(created.slug, created) }, 201);
+    } catch (e) {
+      return c.json({ error: "create_failed", message: (e as Error).message }, 409);
+    }
+  });
+
+  app.get("/:slug", async (c) => {
+    const slug = c.req.param("slug");
+    const agent = await agentService.getBySlug(slug);
+    if (!agent) return c.json({ error: "not_found" }, 404);
+    return c.json({ agent: withUrls(slug, agent) });
+  });
+
+  app.post("/:slug/enable", async (c) => {
+    const slug = c.req.param("slug");
+    const exists = await agentService.getBySlug(slug);
+    if (!exists) return c.json({ error: "not_found" }, 404);
+    await agentService.setEnabled(slug, true);
+    return c.json({ ok: true });
+  });
+
+  app.post("/:slug/disable", async (c) => {
+    const slug = c.req.param("slug");
+    const exists = await agentService.getBySlug(slug);
+    if (!exists) return c.json({ error: "not_found" }, 404);
+    await agentService.setEnabled(slug, false);
+    return c.json({ ok: true });
+  });
+
+  return app;
+}
+import { describe, it, expect, beforeEach } from "vitest";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { randomBytes } from "node:crypto";
+import { Hono } from "hono";
+import { createDb } from "../db/client.js";
+import { createAgentService } from "../services/agents.js";
+import { agentRoutes } from "./agents.js";
+
+const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "..", "db", "migrations");
+
+function makeApp(publicBaseUrl: string) {
+  const dir = mkdtempSync(join(tmpdir(), "lhb-rt-"));
+  const { db } = createDb(`file:${join(dir, "t.db")}`);
+  migrate(db, { migrationsFolder });
+  const svc = createAgentService({ db, encryptionKey: randomBytes(32) });
+  const app = new Hono();
+  app.route("/api/agents", agentRoutes({ agentService: svc, publicBaseUrl }));
+  return app;
+}
+
+const valid = {
+  slug: "pm-agent",
+  displayName: "PM Agent",
+  description: null,
+  iconUrl: null,
+  linearClientId: "client",
+  linearClientSecret: "s-c",
+  linearWebhookSecret: "s-w",
+  requiredScopes: ["read"],
+  hermesConnectorType: "mock",
+  hermesConnectorConfig: { kind: "mock" },
+  permissionPolicy: { defaultMode: "plan-only" },
+};
+
+describe("agents routes", () => {
+  let app: ReturnType<typeof makeApp>;
+  beforeEach(() => {
+    app = makeApp("https://example.test");
+  });
+
+  it("POST /api/agents creates an agent and returns generated URLs", async () => {
+    const res = await app.request("/api/agents", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(valid),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    const agent = body.agent as Record<string, string>;
+    expect(agent.slug).toBe("pm-agent");
+    expect(agent.callbackUrl).toBe("https://example.test/oauth/callback/pm-agent");
+    expect(agent.webhookUrl).toBe("https://example.test/webhooks/linear/pm-agent");
+    expect(agent.installUrl).toBe("https://example.test/oauth/authorize/pm-agent");
+  });
+
+  it("GET /api/agents lists agents", async () => {
+    await app.request("/api/agents", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(valid),
+    });
+    const res = await app.request("/api/agents");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { agents: unknown[] };
+    expect(body.agents.length).toBe(1);
+  });
+
+  it("GET /api/agents/:slug returns 404 for unknown", async () => {
+    const res = await app.request("/api/agents/nope");
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /api/agents/:slug/disable flips enabled", async () => {
+    await app.request("/api/agents", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(valid),
+    });
+    const res = await app.request("/api/agents/pm-agent/disable", { method: "POST" });
+    expect(res.status).toBe(200);
+    const detail = await app.request("/api/agents/pm-agent");
+    const body = (await detail.json()) as { agent: { enabled: boolean } };
+    expect(body.agent.enabled).toBe(false);
+  });
+
+  it("rejects invalid body", async () => {
+    const res = await app.request("/api/agents", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug: "" }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+import { Hono } from "hono";
+import { logger as honoLogger } from "hono/logger";
+import type { AppContext } from "./appContext.js";
+import { agentRoutes } from "./routes/agents.js";
+import { healthRoutes } from "./routes/health.js";
+
+export function createServer(ctx: AppContext) {
+  const app = new Hono();
+  app.use("*", honoLogger((msg) => ctx.logger.info({ tag: "http" }, msg)));
+  app.route("/", healthRoutes());
+  app.route(
+    "/api/agents",
+    agentRoutes({ agentService: ctx.agentService, publicBaseUrl: ctx.config.publicBaseUrl }),
+  );
+  return app;
+}
+import { serve } from "@hono/node-server";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { loadConfig } from "./config.js";
+import { createLogger } from "./logger.js";
+import { createDb } from "./db/client.js";
+import { createAgentService } from "./services/agents.js";
+import { createServer } from "./server.js";
+
+const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "db", "migrations");
+
+const config = loadConfig();
+const logger = createLogger({ level: config.logLevel });
+const { db } = createDb(config.databaseUrl);
+migrate(db, { migrationsFolder });
+const agentService = createAgentService({ db, encryptionKey: config.encryptionKey });
+const app = createServer({ config, db, logger, agentService });
+
+serve({ fetch: app.fetch, port: config.port, hostname: "127.0.0.1" }, (info) => {
+  logger.info({ tag: "startup", port: info.port }, "bridge listening");
+});
+import { randomBytes } from "node:crypto";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { beforeAll, describe, expect, it } from "vitest";
+import type { AppContext } from "./appContext.js";
+import { createDb } from "./db/client.js";
+import { createLogger } from "./logger.js";
+import { createServer } from "./server.js";
+import { createAgentService } from "./services/agents.js";
+
+const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "db", "migrations");
+
+describe("createServer", () => {
+  let ctx: AppContext;
+
+  beforeAll(() => {
+    const { db } = createDb("file::memory:?cache=shared");
+    migrate(db, { migrationsFolder });
+    const encryptionKey = randomBytes(32);
+    const config = {
+      publicBaseUrl: "http://localhost",
+      port: 8787,
+      databaseUrl: ":memory:",
+      encryptionKey,
+      appSecret: "x".repeat(32),
+      linearLive: false,
+      logLevel: "fatal" as const,
+    };
+    const logger = createLogger({ level: "fatal" });
+    const agentService = createAgentService({ db, encryptionKey });
+    ctx = { config, db, logger, agentService };
+  });
+
+  it("returns health status", async () => {
+    const app = createServer(ctx);
+
+    const response = await app.request("/healthz");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      service: "linear-hermes-bridge",
+      version: "0.0.0",
+    });
+  });
+});
