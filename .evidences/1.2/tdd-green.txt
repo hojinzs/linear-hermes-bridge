@@ -1,0 +1,24 @@
+=== 1.2 GREEN ===
+
+ RUN  v2.1.9 /Users/steve/Projects/linear-hermes-bridge
+
+ ✓ apps/bridge/src/crypto/encryption.test.ts (6 tests) 2ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  02:14:30
+   Duration  156ms (transform 16ms, setup 0ms, collect 15ms, tests 2ms, environment 0ms, prepare 23ms)
+
+EXIT=0
+=== 1.3 GREEN ===
+
+ RUN  v2.1.9 /Users/steve/Projects/linear-hermes-bridge
+
+ ✓ apps/bridge/src/logger.test.ts (3 tests) 3ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  02:14:30
+   Duration  159ms (transform 16ms, setup 0ms, collect 25ms, tests 3ms, environment 0ms, prepare 24ms)
+
+EXIT=0
