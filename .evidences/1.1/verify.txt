@@ -1,0 +1,25 @@
+
+> linear-hermes-bridge@0.0.0 test /Users/steve/Projects/linear-hermes-bridge
+> vitest run
+
+
+ RUN  v2.1.9 /Users/steve/Projects/linear-hermes-bridge
+
+ ✓ apps/bridge/src/config.test.ts (6 tests) 3ms
+ ✓ apps/bridge/src/server.test.ts (1 test) 3ms
+
+ Test Files  2 passed (2)
+      Tests  7 passed (7)
+   Start at  02:11:32
+   Duration  171ms (transform 30ms, setup 0ms, collect 45ms, tests 6ms, environment 0ms, prepare 48ms)
+
+Scope: 2 of 3 workspace projects
+apps/bridge typecheck$ tsc -p tsconfig.json
+apps/web typecheck$ tsc -p tsconfig.json --noEmit
+apps/bridge typecheck: Done
+apps/web typecheck: Done
+
+> linear-hermes-bridge@0.0.0 lint /Users/steve/Projects/linear-hermes-bridge
+> biome check .
+
+Checked 19 files in 2ms. No fixes applied.
