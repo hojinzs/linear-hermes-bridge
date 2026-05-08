@@ -46,11 +46,11 @@ Run a Docker Compose stack that receives Linear Agent webhooks over a Cloudflare
 Linear / Browser
   -> public HTTPS tunnel
   -> linear-hermes-bridge container
-  -> Agent Run Queue / Orchestrator
-  -> Agent Runner
   -> local-only Hermes endpoint/CLI
   -> Linear comment or Agent Activity response
 ```
+
+Internal decomposition (Agent Run Queue → Orchestrator → Agent Runner → Hermes connector) is described in [`docs/architecture.md`](docs/architecture.md).
 
 ## Repository state
 

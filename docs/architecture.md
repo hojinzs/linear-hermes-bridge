@@ -159,6 +159,28 @@ Responsibilities:
 - Apply cancellation, retry, backoff, and drain/shutdown policies.
 - Emit runner lifecycle events for operator visibility.
 
+#### Reconciliation thresholds
+
+Defaults applied by the MVP Orchestrator (override per agent only when justified):
+
+| Threshold | Default | Purpose |
+| --- | --- | --- |
+| `heartbeat_timeout_ms` | `60_000` | Attempts whose `heartbeat_at` is older than this are considered stale and eligible for retry/abort. |
+| `claim_lease_ms` | `30_000` | Time between `claimed` and the first runner heartbeat before the claim is released. |
+| `attempt_timeout_ms` | per-agent connector `timeoutMs` | Hard cap for a single attempt; on expiry the attempt becomes `timed_out`. |
+| `retry_backoff` | exponential, `min=15s`, `max=10m` | Used to set `scheduled_at` when an attempt fails and `attempt_count < max_attempts`. |
+
+#### Cancellation flow
+
+Cancellation is expressed in data, not in messages:
+
+1. The operator (Admin UI / API) sets `agent_run_jobs.cancel_requested_at`.
+2. The Orchestrator observes the column on its claim/reconcile loop and, if the job has an active attempt, signals the Agent Runner (in-process function call for MVP, queue message in future deployments).
+3. The Agent Runner finalizes the active attempt as `canceled` (or `timed_out` if the runner hangs past `attempt_timeout_ms`).
+4. The Orchestrator transitions the job to `canceled` after the active attempt reaches a terminal state.
+
+Jobs in `queued` with `cancel_requested_at` set are transitioned directly to `canceled` without creating a new attempt.
+
 ### 7. Session mapper
 
 Maps Linear interaction sessions to Hermes sessions.

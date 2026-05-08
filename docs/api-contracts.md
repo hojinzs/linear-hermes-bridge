@@ -223,6 +223,33 @@ Enables routing for the agent.
 
 Disables routing for the agent while preserving config and installations.
 
+### POST /api/agent-run-jobs/:agentRunJobId/cancel
+
+Purpose: request cancellation of a queued or running Agent Run Job.
+
+Behavior:
+
+1. Sets `agent_run_jobs.cancel_requested_at` to `now()` if not already set.
+2. Returns the current job status without blocking on the active attempt.
+
+Response 202:
+
+```json
+{
+  "ok": true,
+  "agentRunJobId": "arj_...",
+  "status": "running",
+  "cancelRequestedAt": "2026-05-08T03:00:00Z"
+}
+```
+
+Failure responses:
+
+- 404 unknown job.
+- 409 job already in a terminal state (`succeeded` / `failed` / `canceled`).
+
+The Orchestrator transitions the job to `canceled` after the active attempt finalizes; see `docs/architecture.md` "Cancellation flow".
+
 ## Internal Agent Run Job payload
 
 Normalized Agent Run Job input:

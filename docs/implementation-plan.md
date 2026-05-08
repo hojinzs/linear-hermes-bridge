@@ -232,31 +232,11 @@ POST /webhooks/linear/:agentSlug
 
 **Verification:** Duplicate delivery ID or payload hash does not create duplicate Agent Run Job.
 
-## Phase 5. Orchestrator, Agent Runner, and Hermes connector
+## Phase 5. Hermes connector, Agent Runner, and Orchestrator
 
-### Task 5.1: Orchestrator and claim loop
+Built inside-out so each layer is independently testable: connector first (no queue dependency), then runner against the connector, then orchestrator against the runner.
 
-**Objective:** Claim eligible Agent Run Jobs, create run attempts, and apply basic concurrency/retry policy.
-
-**Files:**
-- Create: `apps/bridge/src/orchestrator/claimLoop.ts`
-- Create: `apps/bridge/src/orchestrator/retryPolicy.ts`
-- Create: `apps/bridge/src/orchestrator/types.ts`
-
-**Verification:** Queued jobs are claimed once, stale attempts are retried, and per-agent concurrency is enforced.
-
-### Task 5.2: Agent Runner interface
-
-**Objective:** Define the semantic runner that starts/resumes Hermes sessions for one Agent Run Job.
-
-**Files:**
-- Create: `apps/bridge/src/runner/agentRunner.ts`
-- Create: `apps/bridge/src/runner/events.ts`
-- Create: `apps/bridge/src/runner/types.ts`
-
-**Verification:** Runner creates a run attempt, emits lifecycle events, calls the selected Hermes connector, and records final status.
-
-### Task 5.3: Connector interface
+### Task 5.1: Connector interface
 
 **Objective:** Define a connector abstraction so each agent can target webhook/API/CLI.
 
@@ -272,7 +252,7 @@ interface HermesConnector {
 }
 ```
 
-### Task 5.4: Local webhook connector
+### Task 5.2: Local webhook connector
 
 **Objective:** Post normalized prompt to Hermes generic webhook with `X-Webhook-Signature`.
 
@@ -282,7 +262,7 @@ interface HermesConnector {
 
 **Verification:** Request is signed correctly and timeout behavior is tested.
 
-### Task 5.5: CLI connector fallback
+### Task 5.3: CLI connector fallback
 
 **Objective:** Execute `hermes chat -q` for local prototype use.
 
@@ -292,6 +272,29 @@ interface HermesConnector {
 **Safety:** CLI connector disabled by default unless agent policy enables it.
 
 **Verification:** Mock child process success, timeout, and non-zero exit.
+
+### Task 5.4: Agent Runner interface
+
+**Objective:** Define the semantic runner that starts/resumes Hermes sessions for one Agent Run Job.
+
+**Files:**
+- Create: `apps/bridge/src/runner/agentRunner.ts`
+- Create: `apps/bridge/src/runner/events.ts`
+- Create: `apps/bridge/src/runner/types.ts`
+
+**Verification:** Runner creates a `run_attempts` row, emits lifecycle events, calls the selected Hermes connector against a stub, and records final attempt status.
+
+### Task 5.5: Orchestrator and claim loop
+
+**Objective:** Claim eligible Agent Run Jobs, create run attempts via the Agent Runner, and apply basic concurrency/retry/cancel policy.
+
+**Files:**
+- Create: `apps/bridge/src/orchestrator/claimLoop.ts`
+- Create: `apps/bridge/src/orchestrator/retryPolicy.ts`
+- Create: `apps/bridge/src/orchestrator/cancellation.ts`
+- Create: `apps/bridge/src/orchestrator/types.ts`
+
+**Verification:** Queued jobs are claimed once, stale attempts (heartbeat past `heartbeat_timeout_ms`) are retried, per-agent concurrency is enforced, and `cancel_requested_at` causes the active attempt to finalize as `canceled`.
 
 ## Phase 6. Prompt builder and Linear response writer
 
