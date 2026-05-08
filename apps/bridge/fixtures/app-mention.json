@@ -1,0 +1,15 @@
+{
+  "type": "AppUserNotification",
+  "action": "issueMention",
+  "deliveryId": "del_mention_001",
+  "organizationId": "org_dev",
+  "notification": {
+    "issue": {
+      "id": "issue_003",
+      "identifier": "ENG-300",
+      "title": "Mention test",
+      "url": "https://linear.app/example/issue/ENG-300"
+    },
+    "comment": { "id": "comment_300", "body": "@PM Agent please summarize" }
+  }
+}

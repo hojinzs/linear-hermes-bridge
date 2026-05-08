@@ -1,0 +1,15 @@
+{
+  "type": "AgentSessionEvent",
+  "action": "created",
+  "deliveryId": "del_created_001",
+  "organizationId": "org_dev",
+  "agentSession": {
+    "id": "agt_session_002",
+    "issue": {
+      "id": "issue_002",
+      "identifier": "ENG-200",
+      "title": "Investigate latency",
+      "url": "https://linear.app/example/issue/ENG-200"
+    }
+  }
+}
