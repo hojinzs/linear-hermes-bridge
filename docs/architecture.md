@@ -142,7 +142,7 @@ Stores accepted Linear work as durable, retryable Agent Run Jobs.
 
 Responsibilities:
 
-- Create one `agent_run_job` per accepted, deduplicated webhook delivery.
+- Create one `agent_run_jobs` row per accepted, deduplicated webhook delivery.
 - Preserve queue status, priority, `scheduled_at`, retry/backoff metadata, and redacted input.
 - ACK webhooks quickly while Hermes execution continues asynchronously.
 - Provide a future migration path from in-process queue polling to BullMQ/Redis without changing the Agent Runner contract.
