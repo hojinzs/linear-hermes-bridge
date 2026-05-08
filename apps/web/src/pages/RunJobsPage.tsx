@@ -12,7 +12,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconInfoCircle, IconRefresh } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
 
@@ -40,20 +40,20 @@ export function RunJobsPage() {
   const [open, setOpen] = useState<string | null>(null);
   const [detail, setDetail] = useState<{ job: JobRow; events: EventRow[] } | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const r = (await api.runJobs.list()) as { jobs: JobRow[] };
       setJobs(r.jobs);
     } catch (e) {
       setError((e as Error).message);
     }
-  }
+  }, []);
 
   useEffect(() => {
     load();
     const t = setInterval(load, 30_000);
     return () => clearInterval(t);
-  }, []);
+  }, [load]);
 
   async function openJob(id: string) {
     setOpen(id);

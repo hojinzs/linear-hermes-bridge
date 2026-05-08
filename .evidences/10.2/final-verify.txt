@@ -1,0 +1,23 @@
+=== TYPECHECK ===
+Scope: 2 of 3 workspace projects
+apps/bridge typecheck$ tsc -p tsconfig.json
+apps/web typecheck$ tsc -p tsconfig.json --noEmit
+apps/web typecheck: Done
+apps/bridge typecheck: Done
+
+=== TEST ===
+ Test Files  20 passed (20)
+      Tests  66 passed (66)
+   Start at  03:09:40
+   Duration  880ms (transform 340ms, setup 0ms, collect 2.38s, tests 1.58s, environment 2ms, prepare 725ms)
+
+
+=== LINT ===
+
+Checked 90 files in 10ms. No fixes applied.
+Found 1 warning.
+
+=== E2E ===
+  ✓  10 [chromium] › .evidences/8.3/playwright/runjobs.spec.ts:8:5 › End-to-end run-jobs flow › create agent + dev install + webhook → succeeded run job visible (987ms)
+
+  10 passed (6.0s)

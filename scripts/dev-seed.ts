@@ -41,7 +41,8 @@ let agentId: string;
 if (existing) {
   console.log(`[seed] agent ${SLUG} already exists, skipping create`);
   const full = await svc.getBySlugWithSecrets(SLUG);
-  if (!full) throw new Error(`agent ${SLUG} disappeared between getBySlug and getBySlugWithSecrets`);
+  if (!full)
+    throw new Error(`agent ${SLUG} disappeared between getBySlug and getBySlugWithSecrets`);
   agentId = full.id;
 } else {
   const created = await svc.create({
