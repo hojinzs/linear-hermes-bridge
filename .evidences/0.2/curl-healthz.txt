@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+content-type: application/json
+Content-Length: 62
+Date: Fri, 08 May 2026 17:04:26 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"ok":true,"service":"linear-hermes-bridge","version":"0.0.0"}

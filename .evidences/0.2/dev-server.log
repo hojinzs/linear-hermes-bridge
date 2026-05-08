@@ -1,0 +1,5 @@
+
+> @lhb/bridge@0.0.0 dev /Users/steve/Projects/linear-hermes-bridge/apps/bridge
+> tsx watch src/index.ts
+
+[bridge] listening on http://127.0.0.1:8787
