@@ -17,7 +17,7 @@ Result: initial draft covers the stated MVP requirements.
 
 Checklist:
 
-- Component diagram identifies public tunnel, bridge, database, job worker, Hermes connector, and local Hermes.
+- Component diagram identifies public tunnel, bridge, database, Agent Run Queue, Orchestrator, Agent Runner, Hermes connector, and local Hermes.
 - Sequence diagrams cover OAuth installation and Linear mention/delegation flow.
 - Multi-agent routing is URL-scoped by `agentSlug`.
 - Failure handling table exists.
@@ -45,7 +45,7 @@ Result: MVP security model is conservative and suitable for design-stage publica
 
 Checklist:
 
-- Agents, OAuth states, installations, sessions, deliveries, and jobs are modeled.
+- Agents, OAuth states, installations, sessions, deliveries, Agent Run Jobs, run attempts, and runner events are modeled.
 - SQLite-first deployment is consistent with homelab use.
 - Backup/restore instructions exist.
 - Idempotency and retries are represented.

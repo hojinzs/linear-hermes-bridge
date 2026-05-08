@@ -4,7 +4,7 @@
 
 **Goal:** Build a TypeScript-first, Docker-deployable Linear Agent bridge that routes Linear OAuth app mentions/delegations to local Hermes Agent targets.
 
-**Architecture:** A single Node.js service initially owns HTTP routes, Admin UI API, SQLite persistence, encrypted credential storage, in-process job execution, Hermes connector abstraction, and Linear response writing. Public traffic enters through a tunnel/reverse proxy; Hermes remains local-only.
+**Architecture:** A single Node.js service initially owns HTTP routes, Admin UI API, SQLite persistence, encrypted credential storage, in-process Agent Run Queue, Orchestrator, Agent Runner execution, Hermes connector abstraction, and Linear response writing. Public traffic enters through a tunnel/reverse proxy; Hermes remains local-only.
 
 **Tech Stack:** TypeScript, Node.js 22, Hono or Fastify, React + Vite, SQLite, Drizzle ORM, Zod, Docker Compose.
 
@@ -92,6 +92,7 @@ pnpm test config
 - Create: `apps/bridge/src/db/client.ts`
 - Create: `drizzle.config.ts`
 - Create: `apps/bridge/src/db/migrations/*`
+- Include: `agent_run_jobs`, `run_attempts`, and `runner_events` tables from `docs/data-model.md`.
 
 **Verification:**
 
@@ -221,19 +222,41 @@ POST /webhooks/linear/:agentSlug
 
 **Verification:** Fixture payloads normalize to stable internal types.
 
-### Task 4.3: Idempotent job enqueue
+### Task 4.3: Idempotent Agent Run Job enqueue
 
-**Objective:** ACK quickly and create one job per unique delivery.
+**Objective:** ACK quickly and create one Agent Run Job per unique delivery.
 
 **Files:**
-- Create: `apps/bridge/src/jobs/enqueue.ts`
-- Create: `apps/bridge/src/jobs/types.ts`
+- Create: `apps/bridge/src/agentRunQueue/enqueue.ts`
+- Create: `apps/bridge/src/agentRunQueue/types.ts`
 
-**Verification:** Duplicate delivery ID or payload hash does not create duplicate job.
+**Verification:** Duplicate delivery ID or payload hash does not create duplicate Agent Run Job.
 
-## Phase 5. Hermes connector
+## Phase 5. Orchestrator, Agent Runner, and Hermes connector
 
-### Task 5.1: Connector interface
+### Task 5.1: Orchestrator and claim loop
+
+**Objective:** Claim eligible Agent Run Jobs, create run attempts, and apply basic concurrency/retry policy.
+
+**Files:**
+- Create: `apps/bridge/src/orchestrator/claimLoop.ts`
+- Create: `apps/bridge/src/orchestrator/retryPolicy.ts`
+- Create: `apps/bridge/src/orchestrator/types.ts`
+
+**Verification:** Queued jobs are claimed once, stale attempts are retried, and per-agent concurrency is enforced.
+
+### Task 5.2: Agent Runner interface
+
+**Objective:** Define the semantic runner that starts/resumes Hermes sessions for one Agent Run Job.
+
+**Files:**
+- Create: `apps/bridge/src/runner/agentRunner.ts`
+- Create: `apps/bridge/src/runner/events.ts`
+- Create: `apps/bridge/src/runner/types.ts`
+
+**Verification:** Runner creates a run attempt, emits lifecycle events, calls the selected Hermes connector, and records final status.
+
+### Task 5.3: Connector interface
 
 **Objective:** Define a connector abstraction so each agent can target webhook/API/CLI.
 
@@ -249,7 +272,7 @@ interface HermesConnector {
 }
 ```
 
-### Task 5.2: Local webhook connector
+### Task 5.4: Local webhook connector
 
 **Objective:** Post normalized prompt to Hermes generic webhook with `X-Webhook-Signature`.
 
@@ -259,7 +282,7 @@ interface HermesConnector {
 
 **Verification:** Request is signed correctly and timeout behavior is tested.
 
-### Task 5.3: CLI connector fallback
+### Task 5.5: CLI connector fallback
 
 **Objective:** Execute `hermes chat -q` for local prototype use.
 
@@ -327,7 +350,7 @@ curl http://localhost:8787/healthz
 - Create: `scripts/smoke-linear-webhook.ts`
 - Create: `docs/smoke-test.md`
 
-**Verification:** Signed fixture webhook creates job and produces mocked Linear response.
+**Verification:** Signed fixture webhook creates an Agent Run Job, Agent Runner attempt, and mocked Linear response.
 
 ## Phase 8. GitHub release readiness
 

@@ -30,11 +30,12 @@ Response 200:
 {
   "ok": true,
   "database": "ok",
-  "worker": "ok"
+  "agentRunQueue": "ok",
+  "agentRunner": "ok"
 }
 ```
 
-Response 503 when database or worker is unavailable.
+Response 503 when database, Agent Run Queue, or Agent Runner host is unavailable.
 
 ### GET /oauth/authorize/:agentSlug
 
@@ -103,7 +104,7 @@ Behavior:
 4. Parse payload.
 5. Normalize event.
 6. Deduplicate delivery.
-7. Enqueue job.
+7. Enqueue Agent Run Job.
 8. Return quickly.
 
 Accepted response 202:
@@ -112,7 +113,7 @@ Accepted response 202:
 {
   "ok": true,
   "status": "accepted",
-  "jobId": "job_..."
+  "agentRunJobId": "arj_..."
 }
 ```
 
@@ -222,9 +223,9 @@ Enables routing for the agent.
 
 Disables routing for the agent while preserving config and installations.
 
-## Internal job payload
+## Internal Agent Run Job payload
 
-Normalized job input:
+Normalized Agent Run Job input:
 
 ```json
 {
