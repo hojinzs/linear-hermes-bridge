@@ -18,7 +18,7 @@ function makeApp(publicBaseUrl: string) {
   migrate(db, { migrationsFolder });
   const svc = createAgentService({ db, encryptionKey: randomBytes(32) });
   const app = new Hono();
-  app.route("/api/agents", agentRoutes({ agentService: svc, publicBaseUrl }));
+  app.route("/api/agents", agentRoutes({ agentService: svc, publicBaseUrl, db }));
   return app;
 }
 

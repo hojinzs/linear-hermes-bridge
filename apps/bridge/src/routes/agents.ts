@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import type { DbClient } from "../db/client.js";
 import type { AgentService } from "../services/agents.js";
 
 const ConnectorTypeSchema = z.enum(["mock", "localWebhook", "apiServer", "cli"]);
@@ -22,8 +23,12 @@ const CreateBody = z.object({
   maxConcurrentRuns: z.number().int().positive().optional(),
 });
 
-export function agentRoutes(deps: { agentService: AgentService; publicBaseUrl: string }) {
-  const { agentService, publicBaseUrl } = deps;
+export function agentRoutes(deps: {
+  agentService: AgentService;
+  publicBaseUrl: string;
+  db: DbClient;
+}) {
+  const { agentService, publicBaseUrl, db } = deps;
   const base = publicBaseUrl.replace(/\/+$/, "");
   const app = new Hono();
 
@@ -75,6 +80,28 @@ export function agentRoutes(deps: { agentService: AgentService; publicBaseUrl: s
     const agent = await agentService.getBySlug(slug);
     if (!agent) return c.json({ error: "not_found" }, 404);
     return c.json({ agent: withUrls(slug, agent) });
+  });
+
+  app.get("/:slug/installations", async (c) => {
+    const { eq } = await import("drizzle-orm");
+    const { schema } = await import("../db/client.js");
+    const slug = c.req.param("slug");
+    const agent = await agentService.getBySlug(slug);
+    if (!agent) return c.json({ error: "not_found" }, 404);
+    const rows = db
+      .select()
+      .from(schema.linearInstallations)
+      .where(eq(schema.linearInstallations.agentId, agent.id))
+      .all()
+      .map((r) => ({
+        id: r.id,
+        organizationId: r.linearOrganizationId,
+        organizationName: r.linearOrganizationName,
+        status: r.status,
+        scopes: r.scopes,
+        createdAt: r.createdAt,
+      }));
+    return c.json({ installations: rows });
   });
 
   app.post("/:slug/enable", async (c) => {
