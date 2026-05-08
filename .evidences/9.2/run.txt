@@ -1,0 +1,4 @@
+[seed] created agent slug=mock-agent id=agt_S3cDVohSVqg2UB_Y
+[seed] created mock linear installation org=org_dev id=inst_y_i7AMz78CQJwpFC
+[seed] agent mock-agent already exists, skipping create
+[seed] installation already present for mock-agent
