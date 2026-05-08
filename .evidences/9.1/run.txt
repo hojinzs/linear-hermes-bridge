@@ -1,0 +1,11 @@
+[bootstrap] .env created from .env.example
+[bootstrap] generated dev ENCRYPTION_KEY (saved to .env)
+[bootstrap] generated dev APP_SECRET (saved to .env)
+[bootstrap] created /Users/steve/Projects/linear-hermes-bridge/data
+[bootstrap] running migrations…
+
+> @lhb/bridge@0.0.0 db:migrate /Users/steve/Projects/linear-hermes-bridge/apps/bridge
+> tsx src/db/migrate.ts
+
+[migrate] applied migrations from /Users/steve/Projects/linear-hermes-bridge/apps/bridge/src/db/migrations
+[bootstrap] migrations applied
