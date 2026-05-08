@@ -21,18 +21,39 @@ agents
   1 -> many linear_installations
   1 -> many agent_sessions
   1 -> many webhook_deliveries
-  1 -> many jobs
+  1 -> many agent_run_jobs
 
 linear_installations
   many -> 1 agents
 
 agent_sessions
   many -> 1 agents
+  1 -> many agent_run_jobs
 
-jobs
+webhook_deliveries
+  many -> 1 agents
+  1 -> zero/one agent_run_jobs
+
+agent_run_jobs
   many -> 1 agents
   optional -> 1 agent_sessions
+  1 -> many run_attempts
+
+run_attempts
+  many -> 1 agent_run_jobs
+  many -> 1 agents
+  many -> 1 agent_sessions
+  1 -> many runner_events
 ```
+
+## Naming rule
+
+Do not collapse queue, runner, and worker concepts into a single `jobs` abstraction.
+
+- `agent_run_jobs` represent durable queued work accepted from Linear.
+- `run_attempts` represent each execution attempt for a queued job.
+- `runner_events` represent the Agent Runner lifecycle/progress stream.
+- A future Worker Process is a deployment host and does not need its own table unless multi-node runner registration becomes necessary.
 
 ## Tables
 
@@ -55,6 +76,7 @@ Represents one Linear app/Hermes target mapping.
 | hermes_connector_type | text | `localWebhook`, `apiServer`, `cli`. |
 | hermes_connector_config_enc | text | Encrypted JSON for endpoint/secret/command. |
 | permission_policy | text JSON | Per-agent safety rules. |
+| max_concurrent_runs | integer | Per-agent concurrency limit; default `1` for MVP. |
 | created_at | text datetime | ISO 8601. |
 | updated_at | text datetime | ISO 8601. |
 
@@ -142,9 +164,9 @@ Unique index:
 
 If Linear does not provide a delivery ID in some payloads, use `payload_hash` plus a time window.
 
-### jobs
+### agent_run_jobs
 
-Background processing jobs created from accepted webhooks.
+Durable queued Agent Run Jobs created from accepted webhooks. This table is the MVP Agent Run Queue.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -152,15 +174,69 @@ Background processing jobs created from accepted webhooks.
 | agent_id | text | FK agents.id. |
 | agent_session_id | text nullable | FK agent_sessions.id. |
 | webhook_delivery_id | text nullable | FK webhook_deliveries.id. |
-| type | text | `run_hermes`, `post_linear_response`, `refresh_token`. |
-| status | text | `queued`, `running`, `succeeded`, `failed`, `retrying`. |
-| attempt_count | integer | Retry counter. |
-| input | text JSON | Non-secret job input. |
-| output | text JSON nullable | Non-secret result summary. |
-| error | text nullable | Redacted error. |
-| available_at | text datetime | For retry scheduling. |
+| dedupe_key | text unique | Stable key from delivery/session/prompt to prevent duplicate Hermes runs. |
+| trigger_type | text | `agent_session_created`, `agent_session_prompted`, `mention`, `delegation`. |
+| status | text | `queued`, `claimed`, `running`, `awaiting_input`, `succeeded`, `failed`, `canceled`, `retrying`. |
+| priority | integer | Higher value runs first; default `0`. |
+| scheduled_at | text datetime | Earliest time this job may be claimed. |
+| claimed_by | text nullable | Worker Process / runner host id, when claimed. |
+| claimed_at | text datetime nullable | Claim timestamp. |
+| input | text JSON | Non-secret normalized trigger/context summary. |
+| output | text JSON nullable | Non-secret final result summary. |
+| error | text nullable | Redacted latest error. |
+| max_attempts | integer | Default `3`. |
 | created_at | text datetime | ISO 8601. |
 | updated_at | text datetime | ISO 8601. |
+
+Indexes:
+
+```text
+(status, scheduled_at, priority)
+(agent_id, status)
+(agent_session_id, created_at)
+```
+
+### run_attempts
+
+One Agent Runner execution attempt for an Agent Run Job.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | text primary key | UUID/cuid. |
+| agent_run_job_id | text | FK agent_run_jobs.id. |
+| agent_id | text | FK agents.id for easier querying. |
+| agent_session_id | text nullable | FK agent_sessions.id. |
+| attempt_number | integer | Starts at `1`. |
+| runner_id | text nullable | Agent Runner instance id. |
+| worker_id | text nullable | Deployment host/process id, if distinct. |
+| status | text | `starting`, `running`, `awaiting_input`, `succeeded`, `failed`, `canceled`, `timed_out`. |
+| hermes_session_key | text nullable | Session started/resumed by the connector. |
+| started_at | text datetime | ISO 8601. |
+| heartbeat_at | text datetime nullable | Updated while running. |
+| ended_at | text datetime nullable | ISO 8601. |
+| result | text JSON nullable | Non-secret runner result. |
+| error | text nullable | Redacted error details. |
+
+Unique constraint:
+
+```text
+(agent_run_job_id, attempt_number)
+```
+
+### runner_events
+
+Structured Agent Runner progress and lifecycle events.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | text primary key | UUID/cuid. |
+| run_attempt_id | text | FK run_attempts.id. |
+| agent_run_job_id | text | FK agent_run_jobs.id. |
+| agent_session_id | text nullable | FK agent_sessions.id. |
+| event_type | text | `claimed`, `context_loaded`, `prompt_built`, `hermes_started`, `progress`, `approval_required`, `linear_response_posted`, `completed`, `failed`. |
+| sequence | integer | Monotonic per attempt. |
+| payload | text JSON | Redacted event payload. |
+| created_at | text datetime | ISO 8601. |
 
 ## Configuration JSON examples
 

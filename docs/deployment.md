@@ -151,7 +151,7 @@ Expected health information:
 
 - database reachable,
 - encryption key valid,
-- background worker running,
+- Agent Run Queue and Agent Runner host running,
 - public base URL configured,
 - per-agent Linear install status,
 - per-agent Hermes connector status.

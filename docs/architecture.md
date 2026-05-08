@@ -10,7 +10,7 @@ It owns public integration concerns:
 - Linear webhook signature verification.
 - Agent registry and routing.
 - Session mapping.
-- Async job execution.
+- Agent Run Queue scheduling and async Agent Runner execution.
 - Response delivery to Linear.
 
 It does **not** expose Hermes directly. Hermes remains a local execution engine reachable only from the bridge host or Docker network.
@@ -39,13 +39,25 @@ Linear OAuth + Webhooks          Browser Admin UI
 |           |                       |               |
 |           v                       v               |
 |  +---------------------------------------------+  |
-|  | SQLite + encrypted token storage            |  |
+|  | SQLite + encrypted token/session/job state  |  |
+|  +---------------------------------------------+  |
+|           |                                       |
+|           v                                       |
+|  +---------------------------------------------+  |
+|  | Agent Run Queue                            |  |
+|  | durable jobs / retry / scheduling          |  |
+|  +---------------------------------------------+  |
+|           |                                       |
+|           v                                       |
+|  +---------------------------------------------+  |
+|  | Orchestrator                               |  |
+|  | claim / dispatch / reconcile               |  |
 |  +---------------------------------------------+  |
 |           |                                       |
 |           v                                       |
 |  +----------------+    +-----------------------+  |
-|  | Job queue      | -> | Hermes connector      |  |
-|  | ACK fast       |    | local HTTP/CLI only   |  |
+|  | Agent Runner   | -> | Hermes connector      |  |
+|  | session engine |    | local HTTP/CLI only   |  |
 |  +----------------+    +-----------------------+  |
 +---------------------------------------------------+
                       |
@@ -58,6 +70,19 @@ Linear OAuth + Webhooks          Browser Admin UI
 | profiles / webhook / API server / CLI             |
 +---------------------------------------------------+
 ```
+
+## Terminology: Queue vs Runner vs Worker
+
+The bridge uses these terms deliberately:
+
+| Term | Meaning in this project |
+| --- | --- |
+| Agent Run Queue | Durable scheduling layer for accepted Linear work. It stores job state, dedupe keys, retry/backoff, priority, and concurrency inputs. |
+| Orchestrator | Coordination layer that claims eligible jobs, creates run attempts, reconciles stale work, and applies retry/cancel policy. |
+| Agent Runner | Agent-domain execution engine. It builds prompt envelopes, starts/resumes Hermes sessions, invokes connectors, captures progress, and normalizes final output. |
+| Worker Process | Deployment/runtime host. In the MVP it is inside the single bridge service; later it may become a separate container that polls the queue and hosts Agent Runner instances. |
+
+Short rule: the queue manages work state, the orchestrator decides what should run, the Agent Runner performs the semantic Hermes run, and a Worker Process is only the deployable host.
 
 ## Runtime modules
 
@@ -111,7 +136,30 @@ Responsibilities:
 - ACK within 5 seconds.
 - Enqueue background work.
 
-### 5. Session mapper
+### 5. Agent Run Queue
+
+Stores accepted Linear work as durable, retryable Agent Run Jobs.
+
+Responsibilities:
+
+- Create one `agent_run_job` per accepted, deduplicated webhook delivery.
+- Preserve queue status, priority, `scheduled_at`, retry/backoff metadata, and redacted input.
+- ACK webhooks quickly while Hermes execution continues asynchronously.
+- Provide a future migration path from in-process queue polling to BullMQ/Redis without changing the Agent Runner contract.
+
+### 6. Orchestrator
+
+Coordinates when queued work should run.
+
+Responsibilities:
+
+- Claim eligible Agent Run Jobs while respecting per-agent and global concurrency.
+- Create `run_attempts` for each execution attempt.
+- Reconcile stale/running attempts using heartbeat and timeout metadata.
+- Apply cancellation, retry, backoff, and drain/shutdown policies.
+- Emit runner lifecycle events for operator visibility.
+
+### 7. Session mapper
 
 Maps Linear interaction sessions to Hermes sessions.
 
@@ -127,7 +175,20 @@ Fallback for non-AgentSession payloads:
 linear_organization_id + issue_id + agent_id -> hermes_session_key
 ```
 
-### 6. Hermes connector
+### 8. Agent Runner
+
+The Agent Runner is the semantic execution engine for a single agent run. It is not the same as a generic Worker Process. A Worker Process is a deployable host that may poll the queue; the Agent Runner owns the Hermes session lifecycle.
+
+Responsibilities:
+
+- Fetch any extra Linear issue/comment/session context needed for the run.
+- Build the Hermes prompt envelope from bridge policy, Linear context, and user instruction.
+- Start or resume the mapped Hermes session.
+- Invoke Hermes through the selected connector.
+- Stream progress/final events back to the Orchestrator and Linear Response Writer.
+- Mark attempts succeeded, failed, canceled, or awaiting input.
+
+### 9. Hermes connector
 
 MVP connector types:
 
@@ -137,7 +198,7 @@ MVP connector types:
 
 Connector selection is per agent.
 
-### 7. Linear response writer
+### 10. Linear response writer
 
 MVP response types:
 
@@ -168,13 +229,14 @@ Admin opens bridge UI
 ## Sequence: mention/delegate in Linear
 
 ```text
-User mentions @Ganesha-PM or delegates issue
+User mentions @Hermes Agent or delegates issue
   -> Linear sends AgentSessionEvent/app notification webhook
   -> bridge verifies linear-signature
-  -> bridge normalizes event and enqueues job
+  -> bridge normalizes event and enqueues Agent Run Job
   -> bridge immediately returns 200/202
-  -> worker fetches extra issue/comment context if needed
-  -> worker builds Hermes prompt
+  -> Orchestrator claims eligible job and creates run_attempt
+  -> Agent Runner fetches extra issue/comment context if needed
+  -> Agent Runner builds Hermes prompt
   -> Hermes connector invokes local Hermes
   -> bridge receives Hermes final response
   -> bridge posts Linear comment or Agent Activity
@@ -197,7 +259,7 @@ A Hermes prompt should include:
 Example prompt envelope:
 
 ```md
-You are the Hermes agent connected as Linear app `Ganesha-PM`.
+You are Hermes Agent connected as Linear app `PM Agent`.
 
 Linear context:
 - Organization: <org>
@@ -242,19 +304,19 @@ This avoids ambiguous routing and lets multiple Linear OAuth apps share one brid
 | Missing installation token | Post admin-visible error if possible; mark install invalid. |
 | Hermes timeout | Post Linear comment/activity saying the local agent timed out. |
 | Linear comment write fails | Retry with backoff; record failed job. |
-| Duplicate webhook delivery | Idempotency key prevents duplicate Hermes runs. |
+| Duplicate webhook delivery | Idempotency key prevents duplicate Agent Run Jobs and Hermes runs. |
 
 ## Scalability boundaries
 
 MVP is intentionally single-node:
 
 - SQLite file.
-- In-process queue.
-- One Docker Compose service.
+- In-process Agent Run Queue.
+- One Docker Compose service hosting HTTP edge, Orchestrator, Agent Runner, and Web UI API.
 
 Future scale path:
 
 - Postgres instead of SQLite.
-- Redis/BullMQ instead of in-process queue.
-- Separate API, worker, and UI containers.
+- Redis/BullMQ instead of in-process Agent Run Queue.
+- Separate API, Worker Process, Agent Runner, and UI containers.
 - Organization-level multi-tenant support.
