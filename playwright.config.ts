@@ -19,10 +19,7 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   workers: 1,
-  reporter: [
-    ["list"],
-    ["html", { outputFolder: ".evidences/_playwright-report", open: "never" }],
-  ],
+  reporter: [["list"], ["html", { outputFolder: ".evidences/_playwright-report", open: "never" }]],
   use: {
     baseURL: `http://localhost:${WEB_PORT}`,
     trace: "retain-on-failure",
@@ -31,14 +28,15 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: `rm -rf .evidences/_e2e && mkdir -p .evidences/_e2e && pnpm --filter @lhb/bridge dev`,
+      command:
+        "rm -rf .evidences/_e2e && mkdir -p .evidences/_e2e && pnpm --filter @lhb/bridge dev",
       url: `http://127.0.0.1:${BRIDGE_PORT}/healthz`,
       reuseExistingServer: false,
       timeout: 30_000,
       env: e2eEnv,
     },
     {
-      command: `pnpm --filter @lhb/web dev`,
+      command: "pnpm --filter @lhb/web dev",
       url: `http://localhost:${WEB_PORT}`,
       reuseExistingServer: true,
       timeout: 30_000,
