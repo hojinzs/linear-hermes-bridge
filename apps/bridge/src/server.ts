@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { logger as honoLogger } from "hono/logger";
 import type { AppContext } from "./appContext.js";
+import { selectWriter } from "./linear/selectWriter.js";
+import { agentRunJobsReplyRoutes } from "./routes/agentRunJobsReply.js";
 import { agentRoutes } from "./routes/agents.js";
 import { healthRoutes } from "./routes/health.js";
 import { linearWebhookRoutes } from "./routes/linearWebhook.js";
@@ -27,6 +29,27 @@ export function createServer(ctx: AppContext) {
     linearWebhookRoutes({ db: ctx.db, agentService: ctx.agentService }),
   );
   app.route("/api/agent-run-jobs", runJobsRoutes({ db: ctx.db }));
+  app.route(
+    "/api/agent-run-jobs",
+    agentRunJobsReplyRoutes({
+      db: ctx.db,
+      logger: ctx.logger,
+      buildWriter: ({ logger, agentId }) =>
+        selectWriter({
+          db: ctx.db,
+          logger,
+          agentId,
+          encryptionKey: ctx.config.encryptionKey,
+          linearLive: ctx.config.linearLive,
+        }),
+      resolveHermesHmacSecret: async (agentId) => {
+        const a = await ctx.agentService.getByIdWithSecrets(agentId);
+        if (!a) return null;
+        const cfg = a.hermesConnectorConfig as { hmacSecret?: unknown } | null;
+        return cfg && typeof cfg.hmacSecret === "string" ? cfg.hmacSecret : null;
+      },
+    }),
+  );
   app.route(
     "/oauth",
     oauthRoutes({

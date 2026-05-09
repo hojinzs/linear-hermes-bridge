@@ -47,11 +47,25 @@ export interface AgentService {
   listSummaries(): Promise<AgentSummary[]>;
   getBySlug(slug: string): Promise<AgentSummary | null>;
   getBySlugWithSecrets(slug: string): Promise<AgentWithSecrets | null>;
+  getByIdWithSecrets(id: string): Promise<AgentWithSecrets | null>;
   setEnabled(slug: string, enabled: boolean): Promise<void>;
 }
 
 export function createAgentService(deps: { db: DbClient; encryptionKey: Buffer }): AgentService {
   const { db, encryptionKey } = deps;
+
+  function decryptRow(row: typeof schema.agents.$inferSelect): AgentWithSecrets {
+    return {
+      ...summarize(row),
+      linearClientId: row.linearClientId,
+      linearClientSecret: decrypt(row.linearClientSecretEnc, encryptionKey),
+      linearWebhookSecret: decrypt(row.linearWebhookSecretEnc, encryptionKey),
+      hermesConnectorConfig: JSON.parse(decrypt(row.hermesConnectorConfigEnc, encryptionKey)),
+      permissionPolicy: row.permissionPolicy,
+      requiredScopes: row.requiredScopes,
+      maxConcurrentRuns: row.maxConcurrentRuns,
+    };
+  }
 
   function summarize(row: typeof schema.agents.$inferSelect): AgentSummary {
     return {
@@ -114,16 +128,13 @@ export function createAgentService(deps: { db: DbClient; encryptionKey: Buffer }
     async getBySlugWithSecrets(slug) {
       const row = db.select().from(schema.agents).where(eq(schema.agents.slug, slug)).get();
       if (!row) return null;
-      return {
-        ...summarize(row),
-        linearClientId: row.linearClientId,
-        linearClientSecret: decrypt(row.linearClientSecretEnc, encryptionKey),
-        linearWebhookSecret: decrypt(row.linearWebhookSecretEnc, encryptionKey),
-        hermesConnectorConfig: JSON.parse(decrypt(row.hermesConnectorConfigEnc, encryptionKey)),
-        permissionPolicy: row.permissionPolicy,
-        requiredScopes: row.requiredScopes,
-        maxConcurrentRuns: row.maxConcurrentRuns,
-      };
+      return decryptRow(row);
+    },
+
+    async getByIdWithSecrets(id) {
+      const row = db.select().from(schema.agents).where(eq(schema.agents.id, id)).get();
+      if (!row) return null;
+      return decryptRow(row);
     },
 
     async setEnabled(slug, enabled) {

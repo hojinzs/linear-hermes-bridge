@@ -64,6 +64,7 @@ export async function runAttempt(input: RunInput): Promise<RunnerOutcome> {
       linearOrganizationId: string;
       linearIssueId?: string;
       linearCommentId?: string;
+      linearAgentSessionId?: string;
       issue?: { identifier: string; title: string; url: string };
       userInstruction: string;
     };
@@ -147,7 +148,34 @@ export async function runAttempt(input: RunInput): Promise<RunnerOutcome> {
     return { status: "failed", error: result.error };
   }
 
-  // Post mock comment
+  // Async-accepted: Hermes received the prompt but the agent reply will arrive
+  // out-of-band via POST /api/agent-run-jobs/:id/reply. Mark attempt as awaiting_input
+  // and skip Linear posting until the reply hook fires.
+  if (result.asyncAccepted) {
+    db.update(schema.runAttempts)
+      .set({
+        status: "awaiting_input",
+        hermesSessionKey: result.hermesSessionKey,
+        result: result.output as unknown,
+      })
+      .where(eq(schema.runAttempts.id, attemptId))
+      .run();
+    appendRunnerEvent({
+      db,
+      runAttemptId: attemptId,
+      agentRunJobId: job.id,
+      agentSessionId: job.agentSessionId,
+      eventType: "approval_required",
+      payload: { stage: "awaiting_hermes_reply", note: result.output.summary },
+    });
+    return {
+      status: "awaiting_input",
+      hermesSessionKey: result.hermesSessionKey,
+      output: result.output,
+    };
+  }
+
+  // Synchronous mode: connector returned a real summary. Post directly.
   const issueId = triggerInput.trigger.linearIssueId ?? "unknown_issue";
   const writeRes = await input.writer.postComment({
     agentRunJobId: job.id,
@@ -156,6 +184,7 @@ export async function runAttempt(input: RunInput): Promise<RunnerOutcome> {
     issueId,
     body: result.output.summary,
     parentCommentId: triggerInput.trigger.linearCommentId ?? null,
+    agentSessionId: triggerInput.trigger.linearAgentSessionId ?? null,
   });
 
   if (!writeRes.ok) {

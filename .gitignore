@@ -48,3 +48,4 @@ apps/bridge/data/
 .evidences/_e2e/
 .evidences/_playwright-report/
 
+:memory:*

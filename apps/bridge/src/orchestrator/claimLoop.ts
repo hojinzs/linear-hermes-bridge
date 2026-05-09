@@ -161,6 +161,13 @@ function finalizeJobStatus(
       .run();
     return;
   }
+  if (outcome.status === "awaiting_input") {
+    db.update(schema.agentRunJobs)
+      .set({ status: "awaiting_input", updatedAt: now })
+      .where(eq(schema.agentRunJobs.id, jobId))
+      .run();
+    return;
+  }
   if (outcome.status === "canceled") {
     db.update(schema.agentRunJobs)
       .set({ status: "canceled", updatedAt: now })

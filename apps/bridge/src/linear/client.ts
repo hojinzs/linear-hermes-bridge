@@ -95,4 +95,42 @@ export class LinearGraphqlClient {
     }
     return data.commentCreate.comment;
   }
+
+  /**
+   * Create an agent activity in a Linear Agent Session.
+   *
+   * Use this instead of commentCreate when the trigger originated from an agent_session_*
+   * webhook. Linear's Agent Session UI tracks agent state via these activities; a plain
+   * comment alone leaves the session marked as "did not respond".
+   *
+   * Content payload reference:
+   *   https://linear.app/developers/agent-interaction#activity-content-payload
+   *
+   * Type "response" with `body` is the standard "agent finished" activity.
+   */
+  async agentActivityCreate(input: {
+    agentSessionId: string;
+    body: string;
+    type?: "response" | "thought" | "action" | "elicitation" | "error";
+    ephemeral?: boolean;
+  }): Promise<{ id: string }> {
+    const data = await this.exec<{
+      agentActivityCreate: { success: boolean; agentActivity: { id: string } };
+    }>(
+      `mutation AgentActivityCreate($input: AgentActivityCreateInput!) {
+        agentActivityCreate(input: $input) { success agentActivity { id } }
+      }`,
+      {
+        input: {
+          agentSessionId: input.agentSessionId,
+          content: { type: input.type ?? "response", body: input.body },
+          ...(input.ephemeral !== undefined && { ephemeral: input.ephemeral }),
+        },
+      },
+    );
+    if (!data.agentActivityCreate.success) {
+      throw new LinearGraphqlError("agentActivityCreate returned success=false");
+    }
+    return data.agentActivityCreate.agentActivity;
+  }
 }

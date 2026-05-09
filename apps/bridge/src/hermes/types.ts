@@ -18,6 +18,7 @@ export type HermesRunInput = {
 export type HermesRunResult =
   | {
       ok: true;
+      asyncAccepted?: boolean;
       output: { summary: string; events?: unknown[] };
       hermesSessionKey: string;
     }

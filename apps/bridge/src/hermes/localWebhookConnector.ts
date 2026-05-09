@@ -79,17 +79,23 @@ export function localWebhookConnector(rawConfig: unknown): HermesConnector {
           summary?: string;
           events?: unknown[];
           status?: string;
+          delivery_id?: string;
         };
-        // Accept either explicit ok:true or a 2xx accepted-style response
         if (json.ok === false) return { ok: false, error: "hermes returned ok=false" };
+        // Async-accepted shape: Hermes returns {status, delivery_id, ...} with no summary.
+        // The real agent reply will arrive via /api/agent-run-jobs/:id/reply hook callback.
+        const asyncAccepted =
+          typeof json.summary !== "string" &&
+          (json.status === "accepted" || typeof json.delivery_id === "string");
         return {
           ok: true,
+          ...(asyncAccepted && { asyncAccepted: true }),
           output: {
             summary:
               typeof json.summary === "string"
                 ? json.summary
-                : typeof json.status === "string"
-                  ? `(hermes ${json.status})`
+                : asyncAccepted
+                  ? `(hermes accepted, awaiting agent reply via callback; delivery_id=${json.delivery_id ?? "?"})`
                   : "(no summary)",
             events: Array.isArray(json.events) ? json.events : [],
           },
