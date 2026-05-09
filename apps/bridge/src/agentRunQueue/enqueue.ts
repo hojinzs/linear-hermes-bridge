@@ -10,6 +10,13 @@ function sha256(s: string): string {
 }
 
 function dedupeKey(agentId: string, trigger: NormalizedTrigger, rawBody: string): string {
+  // Cross-event-type dedupe: when the user posts ONE comment, Linear may fire
+  // both AgentSessionEvent (action=prompted) and AppUserNotification (issueCommentMention).
+  // Both reference the same source comment id. Keying by sourceCommentId+textHash
+  // ensures only one job is enqueued per user-comment.
+  if (trigger.sourceCommentId) {
+    return `comment:${agentId}:${trigger.sourceCommentId}:${sha256(trigger.userInstruction)}`;
+  }
   if (trigger.deliveryId) {
     return `linear:${agentId}:${trigger.deliveryId}`;
   }

@@ -14,6 +14,7 @@ export type NormalizedTrigger =
       userInstruction: string;
       deliveryId: string | null;
       commentId: string | null;
+      sourceCommentId: string | null;
     }
   | {
       kind: "agent_session_prompted";
@@ -23,6 +24,7 @@ export type NormalizedTrigger =
       userInstruction: string;
       deliveryId: string | null;
       commentId: string | null;
+      sourceCommentId: string | null;
     }
   | {
       kind: "mention";
@@ -31,6 +33,7 @@ export type NormalizedTrigger =
       userInstruction: string;
       deliveryId: string | null;
       commentId: string | null;
+      sourceCommentId: string | null;
     }
   | {
       kind: "delegation";
@@ -39,4 +42,5 @@ export type NormalizedTrigger =
       userInstruction: string;
       deliveryId: string | null;
       commentId: string | null;
+      sourceCommentId: string | null;
     };

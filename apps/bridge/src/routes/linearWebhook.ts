@@ -1,9 +1,12 @@
+import { appendFileSync } from "node:fs";
 import { Hono } from "hono";
 import { enqueueAgentRunJob } from "../agentRunQueue/enqueue.js";
 import type { DbClient } from "../db/client.js";
 import { normalizeLinearEvent } from "../linear/normalizeEvent.js";
 import { verifyLinearSignature } from "../security/linearSignature.js";
 import type { AgentService } from "../services/agents.js";
+
+const DEBUG_RAW_BODY_PATH = process.env.LHB_DEBUG_WEBHOOK_LOG ?? "/tmp/lhb-debug.log";
 
 export function linearWebhookRoutes(deps: { db: DbClient; agentService: AgentService }) {
   const { db, agentService } = deps;
@@ -19,6 +22,14 @@ export function linearWebhookRoutes(deps: { db: DbClient; agentService: AgentSer
     const sig = c.req.header("linear-signature") ?? "";
     if (!verifyLinearSignature({ rawBody, signature: sig, secret: agent.linearWebhookSecret })) {
       return c.json({ error: "invalid_signature" }, 401);
+    }
+
+    if (DEBUG_RAW_BODY_PATH) {
+      try {
+        appendFileSync(DEBUG_RAW_BODY_PATH, `\n${new Date().toISOString()}\t${slug}\t${rawBody}\n`);
+      } catch {
+        // ignore debug write errors
+      }
     }
 
     let parsed: unknown;
