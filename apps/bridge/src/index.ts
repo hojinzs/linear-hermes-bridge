@@ -5,7 +5,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { loadConfig } from "./config.js";
 import { createDb } from "./db/client.js";
 import { selectConnector } from "./hermes/selectConnector.js";
-import { mockWriter } from "./linear/mockWriter.js";
+import { selectWriter } from "./linear/selectWriter.js";
 import { createLogger } from "./logger.js";
 import { startOrchestrator } from "./orchestrator/claimLoop.js";
 import { DEFAULT_ORCHESTRATOR_CONFIG } from "./orchestrator/types.js";
@@ -34,7 +34,14 @@ void startOrchestrator({
       hermesConnectorType: a.hermesConnectorType,
       hermesConnectorConfig: a.hermesConnectorConfig,
     }),
-  buildWriter: (l) => mockWriter(l),
+  buildWriter: ({ logger: l, agentId }) =>
+    selectWriter({
+      db,
+      logger: l,
+      agentId,
+      encryptionKey: config.encryptionKey,
+      linearLive: config.linearLive,
+    }),
   stopSignal: stopOrchestrator.signal,
 });
 

@@ -7,9 +7,14 @@ type Config = {
   hmacSecret: string;
   timeoutMs?: number;
   deliverMode?: "awaitResponse" | "fireAndForget";
+  signatureHeader?: string;
+  signaturePrefix?: string;
 };
 
-function asConfig(raw: unknown): Config {
+function asConfig(
+  raw: unknown,
+): Required<Pick<Config, "url" | "hmacSecret">> &
+  Required<Pick<Config, "timeoutMs" | "deliverMode" | "signatureHeader" | "signaturePrefix">> {
   const o = raw as Partial<Config> | null | undefined;
   if (!o || typeof o.url !== "string" || typeof o.hmacSecret !== "string") {
     throw new Error("invalid localWebhook config: url and hmacSecret required");
@@ -19,6 +24,8 @@ function asConfig(raw: unknown): Config {
     hmacSecret: o.hmacSecret,
     timeoutMs: typeof o.timeoutMs === "number" ? o.timeoutMs : 120_000,
     deliverMode: o.deliverMode ?? "awaitResponse",
+    signatureHeader: o.signatureHeader ?? "x-webhook-signature",
+    signaturePrefix: o.signaturePrefix ?? "",
   };
 }
 
@@ -27,7 +34,6 @@ export function localWebhookConnector(rawConfig: unknown): HermesConnector {
   return {
     type: "localWebhook",
     async ping() {
-      // Best-effort HEAD; treat any 2xx/3xx/4xx as reachable
       const start = Date.now();
       try {
         const ctrl = new AbortController();
@@ -48,27 +54,43 @@ export function localWebhookConnector(rawConfig: unknown): HermesConnector {
         userInstruction: input.userInstruction,
         hermesSessionKey: input.hermesSessionKey,
       });
-      const signature = createHmac("sha256", config.hmacSecret).update(body).digest("hex");
+      const hex = createHmac("sha256", config.hmacSecret).update(body).digest("hex");
+      const signatureValue = `${config.signaturePrefix}${hex}`;
       const ctrl = new AbortController();
       const onAbort = () => ctrl.abort();
       input.signal.addEventListener("abort", onAbort, { once: true });
-      const t = setTimeout(() => ctrl.abort(), config.timeoutMs ?? 120_000);
+      const t = setTimeout(() => ctrl.abort(), config.timeoutMs);
       try {
         const res = await fetch(config.url, {
           method: "POST",
-          headers: { "content-type": "application/json", "x-webhook-signature": signature },
+          headers: {
+            "content-type": "application/json",
+            [config.signatureHeader]: signatureValue,
+          },
           body,
           signal: ctrl.signal,
         });
         if (!res.ok) {
-          return { ok: false, error: `hermes http ${res.status}` };
+          const text = await res.text().catch(() => "");
+          return { ok: false, error: `hermes http ${res.status}: ${text.slice(0, 200)}` };
         }
-        const json = (await res.json()) as { ok?: boolean; summary?: string; events?: unknown[] };
+        const json = (await res.json()) as {
+          ok?: boolean;
+          summary?: string;
+          events?: unknown[];
+          status?: string;
+        };
+        // Accept either explicit ok:true or a 2xx accepted-style response
         if (json.ok === false) return { ok: false, error: "hermes returned ok=false" };
         return {
           ok: true,
           output: {
-            summary: typeof json.summary === "string" ? json.summary : "(no summary)",
+            summary:
+              typeof json.summary === "string"
+                ? json.summary
+                : typeof json.status === "string"
+                  ? `(hermes ${json.status})`
+                  : "(no summary)",
             events: Array.isArray(json.events) ? json.events : [],
           },
           hermesSessionKey: input.hermesSessionKey ?? "lwh_unknown",

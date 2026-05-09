@@ -79,7 +79,7 @@ describe("cancellation", () => {
       config: DEFAULT_ORCHESTRATOR_CONFIG,
       agentService: ctx.svc,
       buildConnector: () => mockConnector(),
-      buildWriter: (l) => mockWriter(l),
+      buildWriter: ({ logger: l }) => mockWriter(l),
     });
 
     const job = ctx.db

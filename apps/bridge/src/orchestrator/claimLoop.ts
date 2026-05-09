@@ -17,7 +17,7 @@ type TickInput = {
     hermesConnectorType: string;
     hermesConnectorConfig: unknown;
   }) => HermesConnector;
-  buildWriter: (logger: AppLogger) => LinearWriter;
+  buildWriter: (input: { logger: AppLogger; agentId: string }) => LinearWriter;
 };
 
 export async function runOrchestratorTick(input: TickInput): Promise<void> {
@@ -114,7 +114,7 @@ export async function runOrchestratorTick(input: TickInput): Promise<void> {
       hermesConnectorType: agent.hermesConnectorType,
       hermesConnectorConfig: agent.hermesConnectorConfig,
     });
-    const writer = input.buildWriter(input.logger);
+    const writer = input.buildWriter({ logger: input.logger, agentId: agent.id });
 
     input.db
       .update(schema.agentRunJobs)

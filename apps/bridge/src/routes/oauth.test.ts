@@ -13,7 +13,27 @@ import { oauthRoutes } from "./oauth.js";
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "..", "db", "migrations");
 
-async function makeApp(linearLive = false) {
+type FetchScript = (
+  url: string,
+  init?: RequestInit,
+) => Promise<{
+  status: number;
+  body: unknown;
+}>;
+
+function scriptedFetch(handler: FetchScript): typeof fetch {
+  return (async (url: unknown, init?: RequestInit) => {
+    const r = await handler(String(url), init);
+    return {
+      ok: r.status >= 200 && r.status < 300,
+      status: r.status,
+      json: async () => r.body,
+      text: async () => JSON.stringify(r.body),
+    } as unknown as Response;
+  }) as typeof fetch;
+}
+
+async function makeApp(opts?: { linearLive?: boolean; fetchImpl?: typeof fetch }) {
   const dir = mkdtempSync(join(tmpdir(), "lhb-oauth-"));
   const { db } = createDb(`file:${join(dir, "t.db")}`);
   migrate(db, { migrationsFolder });
@@ -39,11 +59,12 @@ async function makeApp(linearLive = false) {
       db,
       agentService: svc,
       publicBaseUrl: "https://example.test",
-      linearLive,
+      linearLive: opts?.linearLive ?? false,
       encryptionKey: key,
+      ...(opts?.fetchImpl && { fetchImpl: opts.fetchImpl }),
     }),
   );
-  return { app, db };
+  return { app, db, key };
 }
 
 describe("oauth routes", () => {
@@ -76,8 +97,107 @@ describe("oauth routes", () => {
   });
 
   it("dev install refuses when LINEAR_LIVE=true", async () => {
-    const live = await makeApp(true);
+    const live = await makeApp({ linearLive: true });
     const res = await live.app.request("/oauth/dev/install/mock", { method: "POST" });
     expect(res.status).toBe(403);
+  });
+
+  it("live callback exchanges code, queries viewer, and creates installation", async () => {
+    const fetchImpl = scriptedFetch(async (url) => {
+      if (url.includes("/oauth/token")) {
+        return {
+          status: 200,
+          body: {
+            access_token: "live-tok",
+            refresh_token: "live-ref",
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: "read,comments:create",
+          },
+        };
+      }
+      if (url.includes("/graphql")) {
+        return {
+          status: 200,
+          body: {
+            data: {
+              viewer: {
+                id: "user_1",
+                name: "Steve",
+                organization: { id: "org_real", name: "Real Org", urlKey: "real" },
+              },
+            },
+          },
+        };
+      }
+      return { status: 404, body: {} };
+    });
+    const live = await makeApp({ linearLive: true, fetchImpl });
+    // First seed an oauth state row by hitting authorize
+    const auth = await live.app.request("/oauth/authorize/mock", { redirect: "manual" });
+    const location = auth.headers.get("location") ?? "";
+    const state = new URL(location).searchParams.get("state") ?? "";
+
+    const cb = await live.app.request(`/oauth/callback/mock?state=${state}&code=abc`);
+    expect(cb.status).toBe(200);
+    const body = (await cb.json()) as { organizationId: string; installationId: string };
+    expect(body.organizationId).toBe("org_real");
+    expect(body.installationId).toMatch(/^inst_/);
+
+    const rows = live.db.select().from(schema.linearInstallations).all();
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.linearOrganizationId).toBe("org_real");
+    expect(rows[0]?.linearOrganizationName).toBe("Real Org");
+    expect(rows[0]?.scopes).toEqual(["read", "comments:create"]);
+  });
+
+  it("live callback with invalid state returns 400", async () => {
+    const live = await makeApp({ linearLive: true });
+    const res = await live.app.request("/oauth/callback/mock?state=nope&code=abc");
+    expect(res.status).toBe(400);
+  });
+
+  it("live callback updates existing installation for same org", async () => {
+    let tokenCalls = 0;
+    const fetchImpl = scriptedFetch(async (url) => {
+      if (url.includes("/oauth/token")) {
+        tokenCalls += 1;
+        return {
+          status: 200,
+          body: {
+            access_token: `live-tok-${tokenCalls}`,
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: "read",
+          },
+        };
+      }
+      return {
+        status: 200,
+        body: {
+          data: {
+            viewer: {
+              id: "user_1",
+              name: "Steve",
+              organization: { id: "org_same", name: "Same Org", urlKey: "same" },
+            },
+          },
+        },
+      };
+    });
+    const live = await makeApp({ linearLive: true, fetchImpl });
+
+    async function flow() {
+      const auth = await live.app.request("/oauth/authorize/mock", { redirect: "manual" });
+      const state = new URL(auth.headers.get("location") ?? "").searchParams.get("state") ?? "";
+      const cb = await live.app.request(`/oauth/callback/mock?state=${state}&code=c`);
+      return (await cb.json()) as { status: string; installationId: string };
+    }
+    const r1 = await flow();
+    expect(r1.status).toBe("installed");
+    const r2 = await flow();
+    expect(r2.status).toBe("updated");
+    expect(r2.installationId).toBe(r1.installationId);
+    expect(live.db.select().from(schema.linearInstallations).all().length).toBe(1);
   });
 });

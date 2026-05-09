@@ -97,7 +97,7 @@ describe("orchestrator tick", () => {
       config: DEFAULT_ORCHESTRATOR_CONFIG,
       agentService: ctx.svc,
       buildConnector: () => mockConnector(),
-      buildWriter: (logger) => mockWriter(logger),
+      buildWriter: ({ logger }) => mockWriter(logger),
     });
     const job = ctx.db
       .select()
@@ -118,7 +118,7 @@ describe("orchestrator tick", () => {
       config: DEFAULT_ORCHESTRATOR_CONFIG,
       agentService: ctx.svc,
       buildConnector: () => mockConnector(),
-      buildWriter: (logger) => mockWriter(logger),
+      buildWriter: ({ logger }) => mockWriter(logger),
     });
     const jobs = ctx.db.select().from(schema.agentRunJobs).all();
     const succeeded = jobs.filter((j) => j.status === "succeeded").length;
