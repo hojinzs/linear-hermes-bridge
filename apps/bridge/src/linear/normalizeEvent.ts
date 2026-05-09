@@ -6,6 +6,11 @@ function asObj(v: unknown): Record<string, unknown> | null {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
 }
 
+function pickStringField(o: Record<string, unknown>, key: string): string | null {
+  const v = o[key];
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
 function readIssue(v: unknown): LinearIssueRef | null {
   const o = asObj(v);
   if (!o) return null;
@@ -26,8 +31,12 @@ export function normalizeLinearEvent(payload: unknown): NormalizedTrigger | null
   const type = root.type;
   const action = root.action;
   const orgId = root.organizationId;
+  // Linear's real webhooks use `webhookId` (UUID) not `deliveryId`. Our fixtures
+  // pre-dated the live integration. Accept either, plus `id` as a last resort.
   const deliveryId =
-    typeof root.deliveryId === "string" && root.deliveryId.length > 0 ? root.deliveryId : null;
+    pickStringField(root, "deliveryId") ??
+    pickStringField(root, "webhookId") ??
+    pickStringField(root, "id");
   if (typeof orgId !== "string") return null;
 
   if (type === "AgentSessionEvent") {
