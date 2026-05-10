@@ -21,20 +21,76 @@ type ResolvedConfig = Required<
 > &
   Pick<CliConnectorConfig, "cwd" | "env">;
 
+const ALLOWED_KILL_SIGNALS: ReadonlySet<NodeJS.Signals> = new Set([
+  "SIGTERM",
+  "SIGKILL",
+  "SIGINT",
+  "SIGHUP",
+  "SIGQUIT",
+]);
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  if (v === null || typeof v !== "object") return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === null || proto === Object.prototype;
+}
+
 function asConfig(raw: unknown): ResolvedConfig {
   const o = raw as Partial<CliConnectorConfig> | null | undefined;
   if (!o || typeof o.command !== "string" || o.command.length === 0) {
     throw new Error("invalid cli config: command (non-empty string) is required");
   }
+
+  let timeoutMs = 120_000;
+  if (o.timeoutMs !== undefined) {
+    if (
+      typeof o.timeoutMs !== "number" ||
+      !Number.isFinite(o.timeoutMs) ||
+      !Number.isInteger(o.timeoutMs) ||
+      o.timeoutMs <= 0
+    ) {
+      throw new Error("invalid cli config: timeoutMs must be a positive integer (ms)");
+    }
+    timeoutMs = o.timeoutMs;
+  }
+
+  let env: Record<string, string> | undefined;
+  if (o.env !== undefined) {
+    if (!isPlainObject(o.env)) {
+      throw new Error("invalid cli config: env must be a plain object of string values");
+    }
+    const validated: Record<string, string> = {};
+    for (const [k, v] of Object.entries(o.env)) {
+      if (typeof v !== "string") {
+        throw new Error(`invalid cli config: env.${k} must be a string (got ${typeof v})`);
+      }
+      validated[k] = v;
+    }
+    env = validated;
+  }
+
+  let killSignal: NodeJS.Signals = "SIGTERM";
+  if (o.killSignal !== undefined) {
+    if (
+      typeof o.killSignal !== "string" ||
+      !ALLOWED_KILL_SIGNALS.has(o.killSignal as NodeJS.Signals)
+    ) {
+      throw new Error(
+        `invalid cli config: killSignal must be one of ${Array.from(ALLOWED_KILL_SIGNALS).join(", ")}`,
+      );
+    }
+    killSignal = o.killSignal;
+  }
+
   return {
     command: o.command,
     args: Array.isArray(o.args) ? o.args.map(String) : [],
     cwd: typeof o.cwd === "string" ? o.cwd : undefined,
-    timeoutMs: typeof o.timeoutMs === "number" ? o.timeoutMs : 120_000,
-    env: o.env && typeof o.env === "object" ? (o.env as Record<string, string>) : undefined,
+    timeoutMs,
+    env,
     inheritEnv: o.inheritEnv ?? true,
     outputFormat: o.outputFormat === "json" ? "json" : "text",
-    killSignal: o.killSignal ?? "SIGTERM",
+    killSignal,
   };
 }
 
@@ -68,15 +124,24 @@ export function cliConnector(rawConfig: unknown): HermesConnector {
 
       let timedOut = false;
       let aborted = false;
+      let killError: Error | undefined;
+
+      const safeKill = () => {
+        try {
+          child.kill(config.killSignal);
+        } catch (e) {
+          killError = e as Error;
+        }
+      };
 
       const timeout = setTimeout(() => {
         timedOut = true;
-        child.kill(config.killSignal);
+        safeKill();
       }, config.timeoutMs);
 
       const onAbort = () => {
         aborted = true;
-        child.kill(config.killSignal);
+        safeKill();
       };
       input.signal.addEventListener("abort", onAbort, { once: true });
 
@@ -108,10 +173,18 @@ export function cliConnector(rawConfig: unknown): HermesConnector {
       }
 
       if (aborted) {
-        return { ok: false, error: "aborted" };
+        return {
+          ok: false,
+          error: killError ? `aborted (kill failed: ${killError.message})` : "aborted",
+        };
       }
       if (timedOut) {
-        return { ok: false, error: `timeout after ${config.timeoutMs}ms` };
+        return {
+          ok: false,
+          error: killError
+            ? `timeout after ${config.timeoutMs}ms (kill failed: ${killError.message})`
+            : `timeout after ${config.timeoutMs}ms`,
+        };
       }
 
       const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();

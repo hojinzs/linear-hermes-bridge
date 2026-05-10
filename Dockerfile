@@ -47,10 +47,13 @@ ENV NODE_ENV=production \
 
 # Claude Code CLI — used by the `cli` connector.
 # Auth at runtime via ANTHROPIC_API_KEY env var OR a mounted ~/.claude directory.
+# Pinned for reproducibility; override at build time with
+#   docker build --build-arg CLAUDE_CODE_VERSION=<x.y.z> .
+ARG CLAUDE_CODE_VERSION=2.1.138
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
- && npm install -g --no-audit --no-fund @anthropic-ai/claude-code \
+ && npm install -g --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && rm -rf /tmp/* /root/.npm
 
 WORKDIR /app

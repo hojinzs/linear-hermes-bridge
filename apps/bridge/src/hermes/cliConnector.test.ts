@@ -140,4 +140,73 @@ describe("cliConnector", () => {
     expect(() => cliConnector({})).toThrow(/command/i);
     expect(() => cliConnector({ command: "" })).toThrow(/command/i);
   });
+
+  it("rejects invalid env (non-object)", () => {
+    expect(() => cliConnector({ command: NODE, env: "FOO=bar" as unknown })).toThrow(/env/i);
+    expect(() => cliConnector({ command: NODE, env: ["FOO", "bar"] as unknown })).toThrow(/env/i);
+  });
+
+  it("rejects invalid env (non-string value)", () => {
+    expect(() =>
+      cliConnector({
+        command: NODE,
+        env: { LHB_NUMERIC: 42 as unknown as string },
+      }),
+    ).toThrow(/env\.LHB_NUMERIC.*string/i);
+    expect(() =>
+      cliConnector({
+        command: NODE,
+        env: { LHB_BOOL: true as unknown as string },
+      }),
+    ).toThrow(/env\.LHB_BOOL.*string/i);
+    expect(() =>
+      cliConnector({
+        command: NODE,
+        env: { LHB_NULL: null as unknown as string },
+      }),
+    ).toThrow(/env\.LHB_NULL.*string/i);
+  });
+
+  it("rejects invalid timeoutMs (NaN, zero, negative, non-integer)", () => {
+    expect(() => cliConnector({ command: NODE, timeoutMs: Number.NaN })).toThrow(
+      /timeoutMs.*positive integer/i,
+    );
+    expect(() => cliConnector({ command: NODE, timeoutMs: 0 })).toThrow(
+      /timeoutMs.*positive integer/i,
+    );
+    expect(() => cliConnector({ command: NODE, timeoutMs: -100 })).toThrow(
+      /timeoutMs.*positive integer/i,
+    );
+    expect(() => cliConnector({ command: NODE, timeoutMs: 1.5 })).toThrow(
+      /timeoutMs.*positive integer/i,
+    );
+    expect(() => cliConnector({ command: NODE, timeoutMs: Number.POSITIVE_INFINITY })).toThrow(
+      /timeoutMs.*positive integer/i,
+    );
+    expect(() => cliConnector({ command: NODE, timeoutMs: "5000" as unknown as number })).toThrow(
+      /timeoutMs.*positive integer/i,
+    );
+  });
+
+  it("rejects invalid killSignal not in allowlist", () => {
+    expect(() =>
+      cliConnector({ command: NODE, killSignal: "SIGNOTREAL" as NodeJS.Signals }),
+    ).toThrow(/killSignal/i);
+    expect(() =>
+      cliConnector({ command: NODE, killSignal: 9 as unknown as NodeJS.Signals }),
+    ).toThrow(/killSignal/i);
+  });
+
+  it("accepts valid killSignal from allowlist (SIGKILL)", async () => {
+    const c = cliConnector({
+      command: NODE,
+      args: ["-e", "setInterval(() => {}, 1000);"],
+      timeoutMs: 150,
+      killSignal: "SIGKILL",
+    });
+    const r = await c.run(makeInput());
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    expect(r.error).toMatch(/timeout/i);
+  });
 });

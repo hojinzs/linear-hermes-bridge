@@ -71,12 +71,19 @@ SQLite file is created under `./data`), the bridge bound to `0.0.0.0:8787`
 inside the container, and the host port mapping works.
 
 To exercise the full webhook flow against the dockerised bridge, seed the
-container's database from the host first:
+container's database from the **host**. The bridge container mounts
+`./data:/app/data` and uses `DATABASE_URL=file:/app/data/bridge.db`, which is
+the same SQLite file `pnpm dev:seed` writes when `.env` has
+`DATABASE_URL=file:./data/bridge.db` (the default from `pnpm dev:bootstrap`).
+So seeding from the host lands rows the container will see — no need to run
+`tsx`/devDeps inside the production image:
 
 ```bash
-# Run the seed script with the same .env the container is using.
-docker compose --profile api-key run --rm --no-deps \
-  -v $PWD:/repo -w /repo bridge node --import tsx scripts/dev-seed.ts
+# 1. Make sure the host .env points at the same SQLite file the container uses.
+grep -E '^DATABASE_URL=' .env   # expect: DATABASE_URL=file:./data/bridge.db
+# 2. Seed using host tooling (tsx is a devDep, available on the host only).
+pnpm dev:seed
+# 3. Drive the webhook flow against the dockerised bridge.
 pnpm smoke
 ```
 
