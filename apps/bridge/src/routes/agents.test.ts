@@ -87,6 +87,15 @@ describe("agents routes", () => {
     expect(body.agent.enabled).toBe(false);
   });
 
+  it("rejects the removed cli connector type", async () => {
+    const res = await app.request("/api/agents", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...valid, hermesConnectorType: "cli" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it("rejects invalid body", async () => {
     const res = await app.request("/api/agents", {
       method: "POST",

@@ -216,9 +216,11 @@ MVP connector types:
 
 1. `localWebhook` — bridge posts to Hermes generic webhook using `X-Webhook-Signature`.
 2. `apiServer` — bridge calls a local Hermes API server endpoint if enabled.
-3. `cli` — bridge runs `hermes chat -q` as a fallback for simple homelab setups.
 
-Connector selection is per agent.
+Connector selection is per agent. The bridge must not execute Hermes/LLM
+commands directly. If the configured Hermes Agent endpoint is unavailable, the
+connector should fail explicitly and surface that state through the run result or
+the connector health check instead of falling back to another execution path.
 
 ### 10. Linear response writer
 

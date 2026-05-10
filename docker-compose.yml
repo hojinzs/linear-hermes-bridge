@@ -1,0 +1,29 @@
+# Linear Hermes Bridge — homelab compose.
+#
+# Runs the bridge service only. Hermes Agent is a separate service/process and
+# should be exposed to this bridge through the configured Hermes connector
+# (for example localWebhook). If Hermes is unavailable, the bridge surfaces the
+# connector error instead of falling back to local command execution.
+
+services:
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: linear-hermes-bridge:latest
+    container_name: linear-hermes-bridge
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

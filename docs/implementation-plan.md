@@ -262,16 +262,13 @@ interface HermesConnector {
 
 **Verification:** Request is signed correctly and timeout behavior is tested.
 
-### Task 5.3: CLI connector fallback
+### Task 5.3: Removed — CLI connector fallback
 
-**Objective:** Execute `hermes chat -q` for local prototype use.
+**Decision:** Do not implement a CLI fallback. The bridge connects Linear to a
+running Hermes Agent endpoint; it must not execute Hermes/LLM commands itself.
 
-**Files:**
-- Create: `apps/bridge/src/hermes/cliConnector.ts`
-
-**Safety:** CLI connector disabled by default unless agent policy enables it.
-
-**Verification:** Mock child process success, timeout, and non-zero exit.
+**Verification:** Unsupported connector types are rejected explicitly, and
+Hermes Agent unavailability is surfaced as a connector health/run failure.
 
 ### Task 5.4: Agent Runner interface
 

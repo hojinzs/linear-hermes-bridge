@@ -1452,7 +1452,7 @@ import { type DbClient, schema } from "../db/client.js";
 import { encrypt, decrypt } from "../crypto/encryption.js";
 import { newId } from "./ids.js";
 
-export type ConnectorType = "mock" | "localWebhook" | "apiServer" | "cli";
+export type ConnectorType = "mock" | "localWebhook" | "apiServer";
 
 export type CreateAgentInput = {
   slug: string;
@@ -1754,7 +1754,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AgentService } from "../services/agents.js";
 
-const ConnectorTypeSchema = z.enum(["mock", "localWebhook", "apiServer", "cli"]);
+const ConnectorTypeSchema = z.enum(["mock", "localWebhook", "apiServer"]);
 
 const CreateBody = z.object({
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/, "slug must be lowercase alphanumeric or hyphen"),
@@ -2319,7 +2319,7 @@ type FormValues = {
   linearClientSecret: string;
   linearWebhookSecret: string;
   requiredScopes: string[];
-  hermesConnectorType: "mock" | "localWebhook" | "apiServer" | "cli";
+  hermesConnectorType: "mock" | "localWebhook" | "apiServer";
   hermesConnectorConfig: string;
   permissionPolicy: string;
 };
@@ -2408,7 +2408,7 @@ export function AgentCreatePage() {
           <TagsInput label="Required scopes" {...form.getInputProps("requiredScopes")} />
           <Select
             label="Hermes connector type"
-            data={["mock", "localWebhook", "apiServer", "cli"]}
+            data={["mock", "localWebhook", "apiServer"]}
             {...form.getInputProps("hermesConnectorType")}
           />
           <JsonInput
@@ -3574,7 +3574,6 @@ export function selectConnector(input: SelectConnectorInput): HermesConnector {
     case "localWebhook":
       return localWebhookConnector(input.hermesConnectorConfig);
     case "apiServer":
-    case "cli":
       throw new Error(
         `connector type "${input.hermesConnectorType}" not implemented in this slice`,
       );

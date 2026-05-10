@@ -18,11 +18,10 @@ Options:
 
 1. `localWebhook` — post to Hermes generic webhook adapter.
 2. `apiServer` — call Hermes API server if enabled.
-3. `cli` — execute `hermes chat -q` locally.
 
-**Default:** `localWebhook` first, `cli` fallback second.
+**Decision:** `localWebhook` first. Do not provide a CLI fallback.
 
-**Rationale:** It keeps Hermes private while avoiding direct process/config mounting. Existing Hermes webhook adapter may need routes enabled, but the bridge can re-sign Linear payloads with `X-Webhook-Signature`.
+**Rationale:** This product connects Linear to Hermes Agent; executing local LLM/Hermes commands from the bridge would cross that boundary and can produce unintended behavior. Existing Hermes webhook adapter may need routes enabled, but the bridge can re-sign Linear payloads with `X-Webhook-Signature`. If Hermes Agent is unavailable, the bridge should report the connector failure clearly rather than falling back.
 
 ## D3. Admin UI exposure
 

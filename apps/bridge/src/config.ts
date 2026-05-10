@@ -26,6 +26,7 @@ const Schema = z.object({
       }
     }, "ENCRYPTION_KEY must be 32 bytes base64"),
   APP_SECRET: z.string().min(16, "APP_SECRET must be at least 16 chars"),
+  HOST: z.string().min(1).default("127.0.0.1"),
   LINEAR_LIVE: z
     .union([z.literal("true"), z.literal("false")])
     .transform((v) => v === "true")
@@ -36,6 +37,7 @@ const Schema = z.object({
 export type Config = {
   publicBaseUrl: string;
   port: number;
+  host: string;
   databaseUrl: string;
   encryptionKey: Buffer;
   appSecret: string;
@@ -52,6 +54,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   return {
     publicBaseUrl: parsed.data.PUBLIC_BASE_URL,
     port: parsed.data.PORT,
+    host: parsed.data.HOST,
     databaseUrl: parsed.data.DATABASE_URL,
     encryptionKey: Buffer.from(parsed.data.ENCRYPTION_KEY, "base64"),
     appSecret: parsed.data.APP_SECRET,

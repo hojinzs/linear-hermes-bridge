@@ -3,7 +3,7 @@ import { decrypt, encrypt } from "../crypto/encryption.js";
 import { type DbClient, schema } from "../db/client.js";
 import { newId } from "./ids.js";
 
-export type ConnectorType = "mock" | "localWebhook" | "apiServer" | "cli";
+export type ConnectorType = "mock" | "localWebhook" | "apiServer";
 
 export type CreateAgentInput = {
   slug: string;

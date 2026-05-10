@@ -16,7 +16,6 @@ export function selectConnector(input: SelectConnectorInput): HermesConnector {
     case "localWebhook":
       return localWebhookConnector(input.hermesConnectorConfig);
     case "apiServer":
-    case "cli":
       throw new Error(
         `connector type "${input.hermesConnectorType}" not implemented in this slice`,
       );

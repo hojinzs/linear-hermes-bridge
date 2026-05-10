@@ -1,0 +1,39 @@
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.vitest
+**/.next
+**/.turbo
+
+# git / editor
+.git
+.gitignore
+.idea
+.vscode
+.DS_Store
+
+# local env / data
+.env
+.env.*
+!.env.example
+data
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# test artifacts
+test-results
+playwright-report
+.evidences
+
+# docs / scripts not needed at runtime
+playwright.config.ts
+vitest.config.ts
+biome.json
+**/*.test.ts
+docs
+
+# host ~/.claude shouldn't sneak into the image
+.claude
