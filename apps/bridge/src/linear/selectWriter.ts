@@ -66,8 +66,24 @@ export function selectWriter(input: SelectWriterInput): LinearWriter {
             });
             if (result.refreshed) return result.accessToken;
           } catch (err) {
-            throw new WriterMissingTokenError(
-              `token refresh failed for installation ${match.id}: ${(err as Error).message}`,
+            // refreshLinearTokenIfNeeded marks the installation revoked when
+            // the refresh token is unambiguously dead (OAuth2 invalid_grant).
+            // For transient failures (5xx, network) and config errors
+            // (invalid_client, etc.) the existing token may still be valid,
+            // so log and fall through to use it.
+            const stillValid = input.db
+              .select()
+              .from(schema.linearInstallations)
+              .where(eq(schema.linearInstallations.id, match.id))
+              .get();
+            if (!stillValid || stillValid.status !== "installed") {
+              throw new WriterMissingTokenError(
+                `token refresh failed for installation ${match.id}: ${(err as Error).message}`,
+              );
+            }
+            input.logger.warn(
+              { tag: "tokenRefresh", installationId: match.id, err: (err as Error).message },
+              "token refresh failed transiently; falling back to existing access token",
             );
           }
         }

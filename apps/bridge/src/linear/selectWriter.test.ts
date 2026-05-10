@@ -217,6 +217,92 @@ describe("selectWriter", () => {
     expect(row.tokenExpiresAt).not.toBeNull();
   });
 
+  it("falls back to existing token on transient refresh failure (5xx)", async () => {
+    const { db, key, logger } = setup();
+    const agentService = createAgentService({ db, encryptionKey: key });
+    const agent = await agentService.create({
+      slug: "transient",
+      displayName: "T",
+      description: null,
+      iconUrl: null,
+      linearClientId: "client-id",
+      linearClientSecret: "client-secret",
+      linearWebhookSecret: "w",
+      requiredScopes: ["read"],
+      hermesConnectorType: "mock",
+      hermesConnectorConfig: { kind: "mock" },
+      permissionPolicy: {},
+    });
+
+    const now = new Date().toISOString();
+    db.insert(schema.linearInstallations)
+      .values({
+        id: "inst_transient",
+        agentId: agent.id,
+        linearOrganizationId: "org_t",
+        linearOrganizationName: "T",
+        accessTokenEnc: encrypt("still-valid-token", key),
+        refreshTokenEnc: encrypt("rt", key),
+        // Within the 60s buffer but not yet expired — the existing token is still good.
+        tokenExpiresAt: new Date(Date.now() + 30_000).toISOString(),
+        scopes: ["read", "comments:create"],
+        status: "installed",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    const calls: { url: string; auth?: string }[] = [];
+    const fetchImpl = (async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      calls.push({ url: u, auth: headers.authorization });
+      if (u.includes("/oauth/token")) {
+        return {
+          ok: false,
+          status: 503,
+          json: async () => ({}),
+          text: async () => "service unavailable",
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: { commentCreate: { success: true, comment: { id: "cmt_x", url: "https://u" } } },
+        }),
+        text: async () => "",
+      } as unknown as Response;
+    }) as typeof fetch;
+
+    const w = selectWriter({
+      db,
+      logger,
+      agentId: agent.id,
+      encryptionKey: key,
+      linearLive: true,
+      fetchImpl,
+      agentService,
+    });
+    const r = await w.postComment({
+      agentRunJobId: "arj",
+      runAttemptId: "ra",
+      organizationId: "org_t",
+      issueId: "issue_1",
+      body: "hello",
+    });
+    expect(r.ok).toBe(true);
+    const graphqlCall = calls.find((c) => !c.url.includes("/oauth/token"));
+    expect(graphqlCall?.auth).toBe("Bearer still-valid-token");
+    const row = db
+      .select()
+      .from(schema.linearInstallations)
+      .where(eq(schema.linearInstallations.id, "inst_transient"))
+      .get();
+    if (!row) throw new Error("installation row missing");
+    expect(row.status).toBe("installed");
+  });
+
   it("surfaces WriterMissingTokenError when refresh fails with 4xx (and DB marked revoked)", async () => {
     const { db, key, logger } = setup();
     const agentService = createAgentService({ db, encryptionKey: key });
@@ -260,7 +346,7 @@ describe("selectWriter", () => {
           text: async () => '{"error":"invalid_grant"}',
         } as unknown as Response;
       }
-      throw new Error("graphql should not be reached when refresh fails");
+      throw new Error("graphql should not be reached when refresh token is invalid_grant");
     }) as typeof fetch;
 
     const w = selectWriter({

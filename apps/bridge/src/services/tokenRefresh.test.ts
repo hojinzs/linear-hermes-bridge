@@ -231,7 +231,7 @@ describe("refreshLinearTokenIfNeeded", () => {
     expect(decrypt(expectString(row.refreshTokenEnc), ctx.encryptionKey)).toBe("keep-refresh");
   });
 
-  it("marks installation revoked when refresh fails with 4xx", async () => {
+  it("marks installation revoked only when refresh fails with invalid_grant", async () => {
     const inst = insertInstallation({
       db: ctx.db,
       encryptionKey: ctx.encryptionKey,
@@ -257,5 +257,61 @@ describe("refreshLinearTokenIfNeeded", () => {
         .get(),
     );
     expect(row.status).toBe("revoked");
+  });
+
+  it("does NOT mark installation revoked on invalid_client (config issue, not user revocation)", async () => {
+    const inst = insertInstallation({
+      db: ctx.db,
+      encryptionKey: ctx.encryptionKey,
+      agentId: ctx.agent.id,
+      tokenExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const fetchImpl = fakeTokenFetch(401, { error: "invalid_client" });
+    await expect(
+      refreshLinearTokenIfNeeded({
+        db: ctx.db,
+        installation: inst,
+        clientId: "client",
+        clientSecret: "secret",
+        encryptionKey: ctx.encryptionKey,
+        fetchImpl,
+      }),
+    ).rejects.toThrow();
+    const row = expectRow(
+      ctx.db
+        .select()
+        .from(schema.linearInstallations)
+        .where(eq(schema.linearInstallations.id, inst.id))
+        .get(),
+    );
+    expect(row.status).toBe("installed");
+  });
+
+  it("does NOT mark installation revoked on transient 5xx", async () => {
+    const inst = insertInstallation({
+      db: ctx.db,
+      encryptionKey: ctx.encryptionKey,
+      agentId: ctx.agent.id,
+      tokenExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const fetchImpl = fakeTokenFetch(503, { error: "service_unavailable" });
+    await expect(
+      refreshLinearTokenIfNeeded({
+        db: ctx.db,
+        installation: inst,
+        clientId: "client",
+        clientSecret: "secret",
+        encryptionKey: ctx.encryptionKey,
+        fetchImpl,
+      }),
+    ).rejects.toThrow();
+    const row = expectRow(
+      ctx.db
+        .select()
+        .from(schema.linearInstallations)
+        .where(eq(schema.linearInstallations.id, inst.id))
+        .get(),
+    );
+    expect(row.status).toBe("installed");
   });
 });

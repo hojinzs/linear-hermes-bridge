@@ -2,6 +2,7 @@ export class LinearOauthExchangeError extends Error {
   constructor(
     message: string,
     public readonly status?: number,
+    public readonly errorCode?: string,
   ) {
     super(message);
     this.name = "LinearOauthExchangeError";
@@ -17,6 +18,20 @@ export type LinearTokenResponse = {
 };
 
 const TOKEN_URL = "https://api.linear.app/oauth/token";
+
+function parseOauthErrorCode(text: string): string | undefined {
+  if (!text) return undefined;
+  try {
+    const body = JSON.parse(text) as { error?: unknown };
+    return typeof body.error === "string" ? body.error : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readErrorBody(res: Response): Promise<string> {
+  return res.text().catch(() => "");
+}
 
 export async function exchangeLinearCode(input: {
   clientId: string;
@@ -39,10 +54,11 @@ export async function exchangeLinearCode(input: {
     body: params.toString(),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
+    const text = await readErrorBody(res);
     throw new LinearOauthExchangeError(
       `linear token endpoint http ${res.status}: ${text.slice(0, 300)}`,
       res.status,
+      parseOauthErrorCode(text),
     );
   }
   const json = (await res.json()) as Partial<LinearTokenResponse>;
@@ -77,10 +93,11 @@ export async function exchangeRefreshLinearToken(input: {
     body: params.toString(),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
+    const text = await readErrorBody(res);
     throw new LinearOauthExchangeError(
       `linear token endpoint http ${res.status}: ${text.slice(0, 300)}`,
       res.status,
+      parseOauthErrorCode(text),
     );
   }
   const json = (await res.json()) as Partial<LinearTokenResponse>;

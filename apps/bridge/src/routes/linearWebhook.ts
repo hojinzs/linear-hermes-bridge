@@ -55,17 +55,18 @@ export function linearWebhookRoutes(deps: { db: DbClient; agentService: AgentSer
 
     const revoke = isRevocationPayload(parsed);
     if (revoke) {
-      if (revoke.organizationId) {
-        db.update(schema.linearInstallations)
-          .set({ status: "revoked", updatedAt: new Date().toISOString() })
-          .where(
-            and(
-              eq(schema.linearInstallations.agentId, agent.id),
-              eq(schema.linearInstallations.linearOrganizationId, revoke.organizationId),
-            ),
-          )
-          .run();
+      if (!revoke.organizationId) {
+        return c.json({ ok: true, status: "ignored", reason: "missing_organization_id" }, 200);
       }
+      db.update(schema.linearInstallations)
+        .set({ status: "revoked", updatedAt: new Date().toISOString() })
+        .where(
+          and(
+            eq(schema.linearInstallations.agentId, agent.id),
+            eq(schema.linearInstallations.linearOrganizationId, revoke.organizationId),
+          ),
+        )
+        .run();
       return c.json({ ok: true, status: "revoked" }, 200);
     }
 

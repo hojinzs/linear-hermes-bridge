@@ -51,12 +51,11 @@ export async function refreshLinearTokenIfNeeded(
       ...(input.fetchImpl && { fetchImpl: input.fetchImpl }),
     });
   } catch (err) {
-    if (
-      err instanceof LinearOauthExchangeError &&
-      err.status &&
-      err.status >= 400 &&
-      err.status < 500
-    ) {
+    // Per OAuth2 RFC 6749 §5.2, only `invalid_grant` indicates a refresh token
+    // that will never work again (revocation, expiry, reuse). Other 4xx errors
+    // (`invalid_client`, `invalid_request`, etc.) signal misconfiguration and
+    // 5xx are transient — neither should flip the installation to revoked.
+    if (err instanceof LinearOauthExchangeError && err.errorCode === "invalid_grant") {
       db.update(schema.linearInstallations)
         .set({ status: "revoked", updatedAt: now.toISOString() })
         .where(eq(schema.linearInstallations.id, installation.id))

@@ -63,6 +63,12 @@ describe("exchangeLinearCode", () => {
     ).rejects.toBeInstanceOf(LinearOauthExchangeError);
   });
 
+  it("preserves OAuth2 error code from the response body", async () => {
+    await expect(
+      exchangeLinearCode({ ...base, fetchImpl: fakeFetch(401, { error: "invalid_grant" }) }),
+    ).rejects.toMatchObject({ name: "LinearOauthExchangeError", errorCode: "invalid_grant" });
+  });
+
   it("throws when response is missing access_token", async () => {
     await expect(
       exchangeLinearCode({ ...base, fetchImpl: fakeFetch(200, { token_type: "Bearer" }) }),
@@ -111,6 +117,24 @@ describe("exchangeRefreshLinearToken", () => {
         fetchImpl: fakeFetch(401, { error: "invalid_grant" }),
       }),
     ).rejects.toMatchObject({ name: "LinearOauthExchangeError", status: 401 });
+  });
+
+  it("preserves OAuth2 error code on refresh failure", async () => {
+    await expect(
+      exchangeRefreshLinearToken({
+        ...base,
+        fetchImpl: fakeFetch(401, { error: "invalid_grant" }),
+      }),
+    ).rejects.toMatchObject({ errorCode: "invalid_grant" });
+  });
+
+  it("preserves errorCode for non-revocation 4xx (e.g. invalid_client)", async () => {
+    await expect(
+      exchangeRefreshLinearToken({
+        ...base,
+        fetchImpl: fakeFetch(401, { error: "invalid_client" }),
+      }),
+    ).rejects.toMatchObject({ errorCode: "invalid_client" });
   });
 
   it("throws when response is missing access_token", async () => {

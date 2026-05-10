@@ -202,4 +202,17 @@ describe("linear webhook route", () => {
     const data = (await res.json()) as { status: string };
     expect(data.status).toBe("revoked");
   });
+
+  it("returns ignored when revocation event has no organizationId", async () => {
+    const body = JSON.stringify({ type: "OAuthAppRevoked" });
+    const res = await ctx.app.request("/webhooks/linear/mock-agent", {
+      method: "POST",
+      headers: { "linear-signature": sign(body, "wsecret"), "content-type": "application/json" },
+      body,
+    });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { status: string; reason?: string };
+    expect(data.status).toBe("ignored");
+    expect(data.reason).toBe("missing_organization_id");
+  });
 });
