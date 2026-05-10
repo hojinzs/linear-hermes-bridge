@@ -19,11 +19,11 @@ export function linearWriter(deps: {
         const token = await deps.getAccessToken({ organizationId: input.organizationId });
         const client = new LinearGraphqlClient(token, undefined, deps.fetchImpl);
 
-        // Agent Session path: try agentActivityCreate first (requires `write` scope)
-        // so the Linear UI marks the session as "responded". If the OAuth token
-        // doesn't have that scope we fall back to commentCreate; the body is still
-        // visible in the issue thread, just without session-state transitions.
-        let activityId: string | undefined;
+        // Agent Session path: agentActivityCreate (with type=response) marks the
+        // session as "responded" AND creates a visible comment in the issue thread
+        // automatically — so do NOT also call commentCreate when this succeeds.
+        // If it fails (e.g., missing `write` scope), fall through to commentCreate
+        // as a fallback.
         if (input.agentSessionId) {
           try {
             const activity = await client.agentActivityCreate({
@@ -31,17 +31,17 @@ export function linearWriter(deps: {
               body: input.body,
               type: "response",
             });
-            activityId = activity.id;
             deps.logger.info(
               {
                 tag: "linear.agent_activity.posted",
                 agentRunJobId: input.agentRunJobId,
                 runAttemptId: input.runAttemptId,
                 agentSessionId: input.agentSessionId,
-                activityId,
+                activityId: activity.id,
               },
               "linear agent activity posted",
             );
+            return { ok: true, commentId: activity.id, activityId: activity.id };
           } catch (activityError) {
             deps.logger.warn(
               {
@@ -56,8 +56,7 @@ export function linearWriter(deps: {
           }
         }
 
-        // Plain comment (always posted; serves as session reply when activity fails or
-        // for mention/delegation triggers).
+        // Fallback / mention / delegation path: regular comment.
         const r = await client.commentCreate({
           issueId: input.issueId,
           body: input.body,
@@ -72,15 +71,10 @@ export function linearWriter(deps: {
             issueId: input.issueId,
             commentId: r.id,
             url: r.url,
-            ...(activityId && { activityId }),
           },
           "linear comment posted",
         );
-        return {
-          ok: true,
-          commentId: r.id,
-          ...(activityId && { activityId }),
-        };
+        return { ok: true, commentId: r.id };
       } catch (e) {
         deps.logger.warn(
           {

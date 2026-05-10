@@ -6,7 +6,9 @@ import { normalizeLinearEvent } from "../linear/normalizeEvent.js";
 import { verifyLinearSignature } from "../security/linearSignature.js";
 import type { AgentService } from "../services/agents.js";
 
-const DEBUG_RAW_BODY_PATH = process.env.LHB_DEBUG_WEBHOOK_LOG ?? "/tmp/lhb-debug.log";
+// Optional raw-body debug capture for development. Set LHB_DEBUG_WEBHOOK_LOG to a
+// writable path to enable; leave unset for normal operation.
+const DEBUG_RAW_BODY_PATH = process.env.LHB_DEBUG_WEBHOOK_LOG;
 
 export function linearWebhookRoutes(deps: { db: DbClient; agentService: AgentService }) {
   const { db, agentService } = deps;
