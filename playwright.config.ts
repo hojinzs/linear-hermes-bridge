@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
@@ -5,7 +8,9 @@ const BRIDGE_PORT = 8787;
 const WEB_PORT = 5173;
 
 const REPO_ROOT = fileURLToPath(new URL(".", import.meta.url));
-const E2E_DB_PATH = `${REPO_ROOT}.evidences/_e2e/bridge.db`;
+// e2e bridge DB lives under the OS temp dir so it never pollutes the repo
+const E2E_TMP_DIR = mkdtempSync(join(tmpdir(), "lhb-e2e-"));
+const E2E_DB_PATH = join(E2E_TMP_DIR, "bridge.db");
 
 const e2eEnv = {
   PUBLIC_BASE_URL: `http://localhost:${WEB_PORT}`,
@@ -18,12 +23,12 @@ const e2eEnv = {
 };
 
 export default defineConfig({
-  testDir: ".evidences",
-  testMatch: "**/playwright/**/*.spec.ts",
+  testDir: "apps/web/tests/e2e",
+  testMatch: "**/*.spec.ts",
   fullyParallel: false,
   retries: 0,
   workers: 1,
-  reporter: [["list"], ["html", { outputFolder: ".evidences/_playwright-report", open: "never" }]],
+  reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
     baseURL: `http://localhost:${WEB_PORT}`,
     trace: "retain-on-failure",
@@ -32,8 +37,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command:
-        "rm -rf .evidences/_e2e && mkdir -p .evidences/_e2e && pnpm --filter @lhb/bridge dev",
+      command: "pnpm --filter @lhb/bridge dev",
       cwd: REPO_ROOT,
       url: `http://127.0.0.1:${BRIDGE_PORT}/healthz`,
       reuseExistingServer: false,

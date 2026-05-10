@@ -33,19 +33,12 @@ data/
 *.db-journal
 coverage/
 .vitest/
-.evidences/**/playwright-report/
-.evidences/_playwright-report/
-.evidences/**/*.zip
-.evidences/**/*.webm
-.evidences/**/trace*
+# per-task evidence artifacts (kept locally for review; not committed)
+.evidences/
 test-results/
 playwright-report/
 
 # bridge runtime data
 apps/bridge/data/
-
-# e2e ephemeral data
-.evidences/_e2e/
-.evidences/_playwright-report/
 
 :memory:*

@@ -1,7 +1,0 @@
-=== 1.3 GREEN ===
-
- RUN  v2.1.9 /Users/steve/Projects/linear-hermes-bridge
-
- ✓ apps/bridge/src/logger.test.ts (3 tests) 3ms
-
- Test Files  1 passed (1)
