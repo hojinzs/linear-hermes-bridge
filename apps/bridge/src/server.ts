@@ -41,6 +41,7 @@ export function createServer(ctx: AppContext) {
           agentId,
           encryptionKey: ctx.config.encryptionKey,
           linearLive: ctx.config.linearLive,
+          agentService: ctx.agentService,
         }),
       resolveHermesHmacSecret: async (agentId) => {
         const a = await ctx.agentService.getByIdWithSecrets(agentId);

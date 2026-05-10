@@ -1,10 +1,22 @@
 import { appendFileSync } from "node:fs";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { enqueueAgentRunJob } from "../agentRunQueue/enqueue.js";
-import type { DbClient } from "../db/client.js";
+import { type DbClient, schema } from "../db/client.js";
 import { normalizeLinearEvent } from "../linear/normalizeEvent.js";
 import { verifyLinearSignature } from "../security/linearSignature.js";
 import type { AgentService } from "../services/agents.js";
+
+function isRevocationPayload(parsed: unknown): { organizationId: string | null } | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const root = parsed as Record<string, unknown>;
+  const orgId = typeof root.organizationId === "string" ? root.organizationId : null;
+  if (root.type === "OAuthAppRevoked") return { organizationId: orgId };
+  if (root.type === "AppUserNotification" && root.action === "oauthAppRevoked") {
+    return { organizationId: orgId };
+  }
+  return null;
+}
 
 // Optional raw-body debug capture for development. Set LHB_DEBUG_WEBHOOK_LOG to a
 // writable path to enable; leave unset for normal operation.
@@ -40,6 +52,23 @@ export function linearWebhookRoutes(deps: { db: DbClient; agentService: AgentSer
     } catch {
       return c.json({ error: "invalid_json" }, 400);
     }
+
+    const revoke = isRevocationPayload(parsed);
+    if (revoke) {
+      if (revoke.organizationId) {
+        db.update(schema.linearInstallations)
+          .set({ status: "revoked", updatedAt: new Date().toISOString() })
+          .where(
+            and(
+              eq(schema.linearInstallations.agentId, agent.id),
+              eq(schema.linearInstallations.linearOrganizationId, revoke.organizationId),
+            ),
+          )
+          .run();
+      }
+      return c.json({ ok: true, status: "revoked" }, 200);
+    }
+
     const event = normalizeLinearEvent(parsed);
     if (!event) return c.json({ ok: true, status: "ignored", reason: "unsupported_event" }, 200);
 
