@@ -16,14 +16,9 @@ export function runJobsRoutes(deps: { db: DbClient }) {
       conditions.push(eq(schema.agentRunJobs.agentId, ag.id));
     }
     if (status) conditions.push(eq(schema.agentRunJobs.status, status));
-    const where = conditions.length === 0 ? undefined : and(...conditions);
-    const rows = db
-      .select()
-      .from(schema.agentRunJobs)
-      .where(where as never)
-      .orderBy(desc(schema.agentRunJobs.createdAt))
-      .limit(100)
-      .all();
+    const baseQuery = db.select().from(schema.agentRunJobs).$dynamic();
+    const filteredQuery = conditions.length === 0 ? baseQuery : baseQuery.where(and(...conditions));
+    const rows = filteredQuery.orderBy(desc(schema.agentRunJobs.createdAt)).limit(100).all();
     return c.json({ jobs: rows });
   });
 

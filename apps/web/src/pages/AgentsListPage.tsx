@@ -1,13 +1,14 @@
 import { Alert, Button, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { IconInfoCircle, IconPlus } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { type AgentListItem, api } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
 
 export function AgentsListPage() {
   const [agents, setAgents] = useState<AgentListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let mounted = true;
@@ -53,9 +54,16 @@ export function AgentsListPage() {
             {agents.map((a) => (
               <Table.Tr
                 key={a.slug}
+                // biome-ignore lint/a11y/useSemanticElements: <tr> cannot be replaced by <button>; ARIA role pattern is correct for clickable table rows
+                role="button"
+                tabIndex={0}
                 style={{ cursor: "pointer" }}
-                onClick={() => {
-                  window.location.href = `/agents/${a.slug}`;
+                onClick={() => navigate(`/agents/${a.slug}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/agents/${a.slug}`);
+                  }
                 }}
               >
                 <Table.Td>
