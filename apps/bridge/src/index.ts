@@ -41,6 +41,7 @@ void startOrchestrator({
       agentId,
       encryptionKey: config.encryptionKey,
       linearLive: config.linearLive,
+      agentService,
     }),
   stopSignal: stopOrchestrator.signal,
 });
