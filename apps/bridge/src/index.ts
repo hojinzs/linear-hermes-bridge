@@ -46,8 +46,8 @@ void startOrchestrator({
   stopSignal: stopOrchestrator.signal,
 });
 
-serve({ fetch: app.fetch, port: config.port, hostname: "127.0.0.1" }, (info) => {
-  logger.info({ tag: "startup", port: info.port }, "bridge listening");
+serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
+  logger.info({ tag: "startup", port: info.port, host: config.host }, "bridge listening");
 });
 
 process.on("SIGINT", () => {

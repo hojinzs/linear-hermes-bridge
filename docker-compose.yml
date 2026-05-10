@@ -1,0 +1,57 @@
+# Linear Hermes Bridge — homelab compose.
+#
+# Two auth modes are exposed via Docker Compose profiles. Choose ONE per host:
+#
+#   1) api-key      — bridge uses ANTHROPIC_API_KEY for the `claude` CLI
+#      docker compose --profile api-key up -d --build
+#
+#   2) local-auth   — bridge uses the host's existing `~/.claude` credentials
+#      docker compose --profile local-auth up -d --build
+#
+# Both services bind to the same host port (8787) and persist SQLite under ./data.
+
+x-bridge-common: &bridge-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: linear-hermes-bridge:latest
+  restart: unless-stopped
+  ports:
+    - "8787:8787"
+  env_file:
+    - .env
+  healthcheck:
+    test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 15s
+
+services:
+  # ---- Mode A: ANTHROPIC_API_KEY ---------------------------------------------
+  bridge:
+    <<: *bridge-common
+    profiles: ["api-key"]
+    container_name: linear-hermes-bridge
+    environment:
+      HOST: 0.0.0.0
+      # Set ANTHROPIC_API_KEY in .env (or the host shell) before running this
+      # profile. The claude CLI will fail at runtime if it is missing or empty.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./data:/app/data
+
+  # ---- Mode B: mounted local Claude auth -------------------------------------
+  bridge-local-auth:
+    <<: *bridge-common
+    profiles: ["local-auth"]
+    container_name: linear-hermes-bridge
+    environment:
+      HOST: 0.0.0.0
+      # Tell the claude CLI where to read its credentials inside the container.
+      CLAUDE_CONFIG_DIR: /root/.claude
+    volumes:
+      - ./data:/app/data
+      # Read-only mount of the host's existing ~/.claude credentials.
+      # The container runs as root, so the mount target is /root/.claude.
+      - ${HOME}/.claude:/root/.claude:ro
