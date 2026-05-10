@@ -1,0 +1,90 @@
+#!/usr/bin/env node
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+
+const repoRoot = resolve(process.cwd());
+// Ensure env loaded
+const envFile = resolve(repoRoot, ".env");
+if (existsSync(envFile)) {
+  for (const line of readFileSync(envFile, "utf8").split("\n")) {
+    const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+    if (m?.[1] && !process.env[m[1]]) process.env[m[1]] = m[2];
+  }
+}
+
+const { loadConfig } = await import("../apps/bridge/src/config.ts");
+const { createDb, schema } = await import("../apps/bridge/src/db/client.ts");
+const { createAgentService } = await import("../apps/bridge/src/services/agents.ts");
+const { encrypt } = await import("../apps/bridge/src/crypto/encryption.ts");
+const { newId } = await import("../apps/bridge/src/services/ids.ts");
+
+const config = loadConfig();
+const { db } = createDb(config.databaseUrl);
+const migrationsFolder = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "apps",
+  "bridge",
+  "src",
+  "db",
+  "migrations",
+);
+migrate(db, { migrationsFolder });
+
+const svc = createAgentService({ db, encryptionKey: config.encryptionKey });
+
+const SLUG = "mock-agent";
+const existing = await svc.getBySlug(SLUG);
+let agentId: string;
+if (existing) {
+  console.log(`[seed] agent ${SLUG} already exists, skipping create`);
+  const full = await svc.getBySlugWithSecrets(SLUG);
+  if (!full)
+    throw new Error(`agent ${SLUG} disappeared between getBySlug and getBySlugWithSecrets`);
+  agentId = full.id;
+} else {
+  const created = await svc.create({
+    slug: SLUG,
+    displayName: "Mock Agent",
+    description: "Dev-only mock agent created by pnpm dev:seed",
+    iconUrl: null,
+    linearClientId: "dev-client-id",
+    linearClientSecret: "dev-client-secret",
+    linearWebhookSecret: "dev-webhook-secret",
+    requiredScopes: ["read", "comments:create", "app:mentionable", "app:assignable"],
+    hermesConnectorType: "mock",
+    hermesConnectorConfig: { kind: "mock" },
+    permissionPolicy: { defaultMode: "plan-only" },
+  });
+  agentId = created.id;
+  console.log(`[seed] created agent slug=${SLUG} id=${agentId}`);
+}
+
+// Create a mock installation if none exists.
+const existingInstalls = db.select().from(schema.linearInstallations).all();
+const hasInstall = existingInstalls.some((i) => i.agentId === agentId);
+if (hasInstall) {
+  console.log(`[seed] installation already present for ${SLUG}`);
+} else {
+  const id = newId("inst");
+  const now = new Date().toISOString();
+  db.insert(schema.linearInstallations)
+    .values({
+      id,
+      agentId,
+      linearOrganizationId: "org_dev",
+      linearOrganizationName: "Dev Workspace",
+      accessTokenEnc: encrypt("dev-mock-access-token", config.encryptionKey),
+      refreshTokenEnc: null,
+      tokenExpiresAt: null,
+      scopes: ["read", "comments:create", "app:mentionable", "app:assignable"],
+      status: "installed",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+  console.log(`[seed] created mock linear installation org=org_dev id=${id}`);
+}
+process.exit(0);

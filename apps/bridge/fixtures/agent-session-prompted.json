@@ -1,0 +1,17 @@
+{
+  "type": "AgentSessionEvent",
+  "action": "prompted",
+  "deliveryId": "del_prompted_001",
+  "organizationId": "org_dev",
+  "agentSession": {
+    "id": "agt_session_001",
+    "issue": {
+      "id": "issue_001",
+      "identifier": "ENG-123",
+      "title": "Improve summary generation",
+      "url": "https://linear.app/example/issue/ENG-123"
+    },
+    "prompt": "Please summarize this issue and propose a short implementation plan.",
+    "comment": { "id": "comment_001" }
+  }
+}

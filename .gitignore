@@ -22,3 +22,23 @@ data/
 .DS_Store
 .idea/
 .vscode/
+
+node_modules/
+dist/
+build/
+.env
+.env.local
+data/
+*.db
+*.db-journal
+coverage/
+.vitest/
+# per-task evidence artifacts (kept locally for review; not committed)
+.evidences/
+test-results/
+playwright-report/
+
+# bridge runtime data
+apps/bridge/data/
+
+:memory:*
