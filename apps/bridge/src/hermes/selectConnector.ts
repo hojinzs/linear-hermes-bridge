@@ -1,4 +1,3 @@
-import { cliConnector } from "./cliConnector.js";
 import type { HermesConnector } from "./connector.js";
 import { localWebhookConnector } from "./localWebhookConnector.js";
 import { mockConnector } from "./mockConnector.js";
@@ -16,8 +15,6 @@ export function selectConnector(input: SelectConnectorInput): HermesConnector {
       return mockConnector({ slow: input.slow ?? false });
     case "localWebhook":
       return localWebhookConnector(input.hermesConnectorConfig);
-    case "cli":
-      return cliConnector(input.hermesConnectorConfig);
     case "apiServer":
       throw new Error(
         `connector type "${input.hermesConnectorType}" not implemented in this slice`,

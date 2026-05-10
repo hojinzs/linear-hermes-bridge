@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { DbClient } from "../db/client.js";
 import type { AgentService } from "../services/agents.js";
 
-const ConnectorTypeSchema = z.enum(["mock", "localWebhook", "apiServer", "cli"]);
+const ConnectorTypeSchema = z.enum(["mock", "localWebhook", "apiServer"]);
 
 const CreateBody = z.object({
   slug: z

@@ -23,7 +23,7 @@ type FormValues = {
   linearClientSecret: string;
   linearWebhookSecret: string;
   requiredScopes: string[];
-  hermesConnectorType: "mock" | "localWebhook" | "apiServer" | "cli";
+  hermesConnectorType: "mock" | "localWebhook" | "apiServer";
   hermesConnectorConfig: string;
   permissionPolicy: string;
 };
@@ -117,7 +117,7 @@ export function AgentCreatePage() {
           <TagsInput label="Required scopes" {...form.getInputProps("requiredScopes")} />
           <Select
             label="Hermes connector type"
-            data={["mock", "localWebhook", "apiServer", "cli"]}
+            data={["mock", "localWebhook", "apiServer"]}
             {...form.getInputProps("hermesConnectorType")}
           />
           <JsonInput

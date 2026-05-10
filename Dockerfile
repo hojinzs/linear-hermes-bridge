@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # Linear Hermes Bridge — homelab Docker image.
-# Bundles the bridge service plus the `claude` CLI so the cli connector can run.
+# Runs only the bridge service; Hermes Agent runs separately and is reached via connector configuration.
 
 # ---------- Stage 1: install workspace deps ----------
 FROM node:22-bookworm-slim AS deps
@@ -45,16 +45,9 @@ ENV NODE_ENV=production \
     PORT=8787 \
     DATABASE_URL=file:/app/data/bridge.db
 
-# Claude Code CLI — used by the `cli` connector.
-# Auth at runtime via ANTHROPIC_API_KEY env var OR a mounted ~/.claude directory.
-# Pinned for reproducibility; override at build time with
-#   docker build --build-arg CLAUDE_CODE_VERSION=<x.y.z> .
-ARG CLAUDE_CODE_VERSION=2.1.138
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/* \
- && npm install -g --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
- && rm -rf /tmp/* /root/.npm
+ && rm -rf /var/lib/apt/lists/* /tmp/* /root/.npm
 
 WORKDIR /app
 COPY --from=prod-deps /app/node_modules ./node_modules

@@ -13,13 +13,13 @@ and lands a mocked Linear response.
 | Mode | Where the bridge runs | Connector | When to use |
 | --- | --- | --- | --- |
 | Local (host) | `pnpm dev` on the developer machine | `mock` | Fast inner loop, also the CI/PR smoke. |
-| Docker — api-key | `docker compose --profile api-key up -d` | `mock` for the smoke, `cli` in real use | Verify container build + ANTHROPIC_API_KEY auth path. |
-| Docker — local-auth | `docker compose --profile local-auth up -d` | `mock` for the smoke, `cli` in real use | Verify container build + mounted `~/.claude` auth path. |
+| Docker | `docker compose up -d` | `mock` for the smoke, configured Hermes connector in real use | Verify production image build + bridge startup. |
 
 The signed webhook smoke uses the `mock` connector regardless of how the
-bridge is launched, so it does not require a real Anthropic key. The two
-docker profiles are smoked at the `/healthz` and process-startup level —
-that is what the auth boundary is gating.
+bridge is launched, so it does not require a real Hermes Agent endpoint. Real
+Hermes execution should use an explicit connector such as `localWebhook`; if
+that endpoint is unavailable, the bridge should expose the connector error
+instead of falling back to local command execution.
 
 ---
 
@@ -51,19 +51,17 @@ What it asserts (per `scripts/smoke-webhook.ts`):
 
 ---
 
-## 2. Docker mode — `api-key` profile
+## 2. Docker mode
 
 ```bash
-# 1. Provide the Anthropic key (stays out of git via .env)
-echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
-# 2. Make sure ENCRYPTION_KEY / APP_SECRET are populated in .env
+# 1. Make sure ENCRYPTION_KEY / APP_SECRET are populated in .env
 pnpm dev:bootstrap   # safe to re-run; only fills empties
-# 3. Build + start the container
-docker compose --profile api-key up -d --build
-# 4. Verify the bridge is listening
+# 2. Build + start the container
+docker compose up -d --build
+# 3. Verify the bridge is listening
 curl -fsS http://127.0.0.1:8787/healthz
-# 5. Tear down
-docker compose --profile api-key down
+# 4. Tear down
+docker compose down
 ```
 
 `/healthz` returning `200` proves: the image built, migrations applied (the
@@ -89,36 +87,13 @@ pnpm smoke
 
 ---
 
-## 3. Docker mode — `local-auth` profile
-
-Use this when the host already has `claude /login` configured and you want
-the container to reuse those credentials instead of an API key.
-
-```bash
-# Sanity check — the host needs ~/.claude with a valid session
-ls -1 "$HOME/.claude" | head
-docker compose --profile local-auth up -d --build
-curl -fsS http://127.0.0.1:8787/healthz
-docker compose --profile local-auth down
-```
-
-The compose file mounts `${HOME}/.claude` read-only into `/root/.claude` and
-sets `CLAUDE_CONFIG_DIR=/root/.claude`. The `claude` CLI in the image will
-pick the credentials up the same way it would on the host.
-
-> Mode A (`api-key`) and Mode B (`local-auth`) share a `container_name`, so
-> only one can run at a time. That is intentional — pick the auth strategy
-> per host, do not stack them.
-
----
-
-## 4. What success looks like
+## 3. What success looks like
 
 - `pnpm smoke` prints `[smoke] final status: succeeded` and exits `0`.
 - `pnpm smoke -- --bad-sig` prints `[smoke] bad signature correctly rejected
   with 401` and exits `0`.
-- `curl :8787/healthz` returns HTTP 200 in both docker profiles.
-- `docker compose ... ps` shows the bridge container as `healthy` after the
+- `curl :8787/healthz` returns HTTP 200 in docker mode.
+- `docker compose ps` shows the bridge container as `healthy` after the
   start-period (the image's HEALTHCHECK pings `/healthz` itself).
 
 If any of those fail: capture the bridge logs (`docker compose logs bridge`
