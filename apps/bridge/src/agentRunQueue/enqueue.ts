@@ -11,11 +11,15 @@ function sha256(s: string): string {
 
 function dedupeKey(agentId: string, trigger: NormalizedTrigger, rawBody: string): string {
   // Cross-event-type dedupe: when the user posts ONE comment, Linear may fire
-  // both AgentSessionEvent (action=prompted) and AppUserNotification (issueCommentMention).
-  // Both reference the same source comment id. Keying by sourceCommentId+textHash
-  // ensures only one job is enqueued per user-comment.
+  // multiple webhook events that all reference the same source comment id —
+  // - AppUserNotification (issueCommentMention) — has comment.body
+  // - AgentSessionEvent action=created — usually NO agentActivity, no body
+  // - AgentSessionEvent action=prompted — has agentActivity.content.body
+  // Keying purely on sourceCommentId (without textHash) collapses all of them
+  // into a single job. Comments are immutable in Linear's webhook event model
+  // (edits do not re-fire), so we don't lose updates by ignoring text.
   if (trigger.sourceCommentId) {
-    return `comment:${agentId}:${trigger.sourceCommentId}:${sha256(trigger.userInstruction)}`;
+    return `comment:${agentId}:${trigger.sourceCommentId}`;
   }
   if (trigger.deliveryId) {
     return `linear:${agentId}:${trigger.deliveryId}`;

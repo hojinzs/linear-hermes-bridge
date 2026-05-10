@@ -71,26 +71,46 @@ export function normalizeLinearEvent(payload: unknown): NormalizedTrigger | null
     // Linear puts the user's text in different places depending on the action and
     // payload version. Try, in priority order:
     //   1. root.agentActivity.content.body  (real "prompted" payloads)
-    //   2. agentSession.prompt              (older fixture shape)
-    //   3. agentSession.summary             (occasionally used for created)
-    //   4. issue.description                (last-resort context for fresh delegations)
+    //   2. agentSession.comment.body        (real "created" from top-level mention)
+    //   3. agentSession.prompt              (older fixture shape)
+    //   4. agentSession.summary             (occasionally used for created)
+    //   5. issue.description                (last-resort context for fresh delegations)
     const activity = asObj(root.agentActivity);
     const activityContent = activity ? asObj(activity.content) : null;
     const activityBody =
       activityContent && typeof activityContent.body === "string" ? activityContent.body : null;
+    const sessionComment = asObj(session.comment);
+    const sessionCommentBody =
+      sessionComment && typeof sessionComment.body === "string" ? sessionComment.body : null;
     const sessionPrompt = typeof session.prompt === "string" ? session.prompt : null;
     const sessionSummary = typeof session.summary === "string" ? session.summary : null;
     const issueObj = asObj(session.issue);
     const issueDescription =
       issueObj && typeof issueObj.description === "string" ? issueObj.description : null;
-    const prompt = activityBody ?? sessionPrompt ?? sessionSummary ?? issueDescription ?? "";
+    const prompt =
+      activityBody ??
+      sessionCommentBody ??
+      sessionPrompt ??
+      sessionSummary ??
+      issueDescription ??
+      "";
 
+    // The user's actual mention comment id has different homes per action:
+    //   - action=prompted (in-thread):       agentActivity.sourceCommentId
+    //   - action=created (top-level mention): session.commentId IS the mention
+    //                                          (no thread root yet)
+    //   - fallback:                           session.sourceCommentId
+    // For action=prompted, session.commentId is the SESSION THREAD ROOT — not the
+    // mention — so we must NOT use it as sourceCommentId. The activity must take
+    // precedence.
     const sourceCommentId =
       activity && typeof activity.sourceCommentId === "string"
         ? activity.sourceCommentId
         : typeof session.sourceCommentId === "string"
           ? session.sourceCommentId
-          : null;
+          : action === "created" && typeof session.commentId === "string"
+            ? session.commentId
+            : null;
 
     if (action === "created") {
       return {
