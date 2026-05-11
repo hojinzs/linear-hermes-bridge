@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb, schema } from "../db/client.js";
 import { mockConnector } from "../hermes/mockConnector.js";
 import { mockWriter } from "../linear/mockWriter.js";
@@ -18,7 +18,8 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "..", "db
 
 async function setup() {
   const dir = mkdtempSync(join(tmpdir(), "lhb-orch-"));
-  const { db } = createDb(`file:${join(dir, "t.db")}`);
+  const workspaceRoot = mkdtempSync(join(tmpdir(), "lhb-orch-ws-"));
+  const { db, close } = createDb(`file:${join(dir, "t.db")}`);
   migrate(db, { migrationsFolder });
   const svc = createAgentService({ db, encryptionKey: randomBytes(32) });
   const agent = await svc.create({
@@ -35,7 +36,7 @@ async function setup() {
     permissionPolicy: {},
   });
   const logger = createLogger({ level: "fatal" });
-  return { db, svc, agent, logger };
+  return { db, close, svc, agent, logger, dir, workspaceRoot };
 }
 
 function insertJob(
@@ -88,6 +89,12 @@ describe("orchestrator tick", () => {
     ctx = await setup();
   });
 
+  afterEach(() => {
+    ctx.close();
+    rmSync(ctx.dir, { recursive: true, force: true });
+    rmSync(ctx.workspaceRoot, { recursive: true, force: true });
+  });
+
   it("claims a queued job, runs it, and marks the job succeeded", async () => {
     const id = insertJob(ctx.db, ctx.agent.id);
     await runOrchestratorTick({
@@ -96,6 +103,7 @@ describe("orchestrator tick", () => {
       runnerId: "test-runner",
       config: DEFAULT_ORCHESTRATOR_CONFIG,
       agentService: ctx.svc,
+      workspaceRoot: ctx.workspaceRoot,
       buildConnector: () => mockConnector(),
       buildWriter: ({ logger }) => mockWriter(logger),
     });
@@ -117,6 +125,7 @@ describe("orchestrator tick", () => {
       runnerId: "test-runner",
       config: DEFAULT_ORCHESTRATOR_CONFIG,
       agentService: ctx.svc,
+      workspaceRoot: ctx.workspaceRoot,
       buildConnector: () => mockConnector(),
       buildWriter: ({ logger }) => mockWriter(logger),
     });

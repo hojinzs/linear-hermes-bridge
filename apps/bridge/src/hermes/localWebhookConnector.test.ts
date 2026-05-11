@@ -60,6 +60,46 @@ describe("localWebhookConnector", () => {
     expect(receivedSig).toBe(expected);
   });
 
+  it("includes workspacePath in the request body when provided", async () => {
+    const c = localWebhookConnector({
+      url: `http://127.0.0.1:${port}/webhook`,
+      hmacSecret: "shh",
+      timeoutMs: 2000,
+    });
+    const r = await c.run({
+      agentRunJobId: "arj_2",
+      runAttemptId: "ra_2",
+      agentId: "agt_2",
+      prompt: "p",
+      userInstruction: "u",
+      hermesSessionKey: null,
+      workspacePath: "/tmp/lhb-workspaces/daapp/org/HJ-123-deadbeef",
+      signal: new AbortController().signal,
+    });
+    if (!r.ok) throw new Error("expected ok");
+    const parsed = JSON.parse(receivedBody) as { workspacePath?: string };
+    expect(parsed.workspacePath).toBe("/tmp/lhb-workspaces/daapp/org/HJ-123-deadbeef");
+  });
+
+  it("omits workspacePath when not provided", async () => {
+    const c = localWebhookConnector({
+      url: `http://127.0.0.1:${port}/webhook`,
+      hmacSecret: "shh",
+      timeoutMs: 2000,
+    });
+    await c.run({
+      agentRunJobId: "arj_3",
+      runAttemptId: "ra_3",
+      agentId: "agt_3",
+      prompt: "p",
+      userInstruction: "u",
+      hermesSessionKey: null,
+      signal: new AbortController().signal,
+    });
+    const parsed = JSON.parse(receivedBody) as Record<string, unknown>;
+    expect("workspacePath" in parsed).toBe(false);
+  });
+
   it("times out and returns error", async () => {
     // Hijack: replace server close to delay forever — use a separate server
     await new Promise<void>((resolve) => server.close(() => resolve()));

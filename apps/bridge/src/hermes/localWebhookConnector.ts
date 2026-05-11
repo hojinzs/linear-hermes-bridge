@@ -53,6 +53,7 @@ export function localWebhookConnector(rawConfig: unknown): HermesConnector {
         prompt: input.prompt,
         userInstruction: input.userInstruction,
         hermesSessionKey: input.hermesSessionKey,
+        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
       });
       const hex = createHmac("sha256", config.hmacSecret).update(body).digest("hex");
       const signatureValue = `${config.signaturePrefix}${hex}`;

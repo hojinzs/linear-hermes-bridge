@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { asc, eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb, schema } from "../db/client.js";
 import { mockConnector } from "../hermes/mockConnector.js";
 import { mockWriter } from "../linear/mockWriter.js";
@@ -17,7 +17,8 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "..", "db
 
 async function setup() {
   const dir = mkdtempSync(join(tmpdir(), "lhb-run-"));
-  const { db } = createDb(`file:${join(dir, "t.db")}`);
+  const workspaceRoot = mkdtempSync(join(tmpdir(), "lhb-run-ws-"));
+  const { db, close } = createDb(`file:${join(dir, "t.db")}`);
   migrate(db, { migrationsFolder });
   const svc = createAgentService({ db, encryptionKey: randomBytes(32) });
   const agent = await svc.create({
@@ -69,13 +70,19 @@ async function setup() {
     })
     .run();
   const logger = createLogger({ level: "fatal" });
-  return { db, svc, agentId: agent.id, jobId, logger };
+  return { db, close, dir, svc, agentId: agent.id, jobId, logger, workspaceRoot };
 }
 
 describe("runAttempt", () => {
   let ctx: Awaited<ReturnType<typeof setup>>;
   beforeEach(async () => {
     ctx = await setup();
+  });
+
+  afterEach(() => {
+    ctx.close();
+    rmSync(ctx.dir, { recursive: true, force: true });
+    rmSync(ctx.workspaceRoot, { recursive: true, force: true });
   });
 
   it("creates a run_attempts row, emits lifecycle events, and finalizes succeeded", async () => {
@@ -87,6 +94,8 @@ describe("runAttempt", () => {
       connector: mockConnector(),
       writer: mockWriter(ctx.logger),
       agentDisplayName: "Mock",
+      agentSlug: "mock",
+      workspaceRoot: ctx.workspaceRoot,
     });
     expect(outcome.status).toBe("succeeded");
     const attempts = ctx.db
@@ -105,9 +114,12 @@ describe("runAttempt", () => {
     const types = events.map((e) => e.eventType);
     expect(types).toContain("claimed");
     expect(types).toContain("context_loaded");
+    expect(types).toContain("workspace_prepared");
     expect(types).toContain("prompt_built");
     expect(types).toContain("hermes_started");
     expect(types).toContain("linear_response_posted");
     expect(types).toContain("completed");
+    expect(attempts[0]?.workspacePath).toBeTruthy();
+    expect(existsSync(attempts[0]?.workspacePath ?? "")).toBe(true);
   });
 });

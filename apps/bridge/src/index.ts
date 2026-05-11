@@ -28,6 +28,7 @@ void startOrchestrator({
   runnerId: `runner-${process.pid}`,
   config: DEFAULT_ORCHESTRATOR_CONFIG,
   agentService,
+  workspaceRoot: config.workspaceRoot,
   buildConnector: (a) =>
     selectConnector({
       agentSlug: "active",

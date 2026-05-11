@@ -11,6 +11,7 @@ export type HermesRunInput = {
   prompt: string;
   userInstruction: string;
   hermesSessionKey: string | null;
+  workspacePath?: string;
   signal: AbortSignal;
   onProgress?: (ev: HermesProgressEvent) => void;
 };
