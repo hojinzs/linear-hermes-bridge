@@ -147,7 +147,7 @@ describe("prepareIssueWorkspace", () => {
     expect(ctx.db.select().from(schema.agentWorkspaces).all().length).toBe(2);
   });
 
-  it("rejects path traversal attempts via issue identifier", async () => {
+  it("sanitizes path traversal attempts in the issue identifier", async () => {
     const result = await prepareIssueWorkspace({
       db: ctx.db,
       workspaceRoot: ctx.root,
@@ -161,7 +161,7 @@ describe("prepareIssueWorkspace", () => {
     expect(result.workspacePath).not.toContain("..");
   });
 
-  it("rejects path traversal in organizationId/agentSlug", async () => {
+  it("sanitizes path traversal segments in organizationId/agentSlug", async () => {
     const result = await prepareIssueWorkspace({
       db: ctx.db,
       workspaceRoot: ctx.root,
@@ -185,5 +185,67 @@ describe("prepareIssueWorkspace", () => {
         issue: { id: "", identifier: "..", title: "" },
       }),
     ).rejects.toThrow(/invalid issue/i);
+  });
+
+  it("repairs a stored workspacePath that points outside the configured workspaceRoot", async () => {
+    const now = new Date().toISOString();
+    const tamperedPath = join(tmpdir(), "lhb-ws-evil-outside-root");
+    ctx.db
+      .insert(schema.agentWorkspaces)
+      .values({
+        id: "ws_tampered",
+        agentId: "agt_1",
+        linearOrganizationId: "org_abc",
+        linearIssueId: "iss_tamper00",
+        issueIdentifier: "HJ-999",
+        workspacePath: tamperedPath,
+        status: "active",
+        createdAt: now,
+        lastUsedAt: now,
+      })
+      .run();
+
+    const result = await prepareIssueWorkspace({
+      db: ctx.db,
+      workspaceRoot: ctx.root,
+      agentSlug: "daapp",
+      agentId: "agt_1",
+      organizationId: "org_abc",
+      issue: { id: "iss_tamper00", identifier: "HJ-999", title: "x" },
+    });
+
+    expect(result.created).toBe(false);
+    expect(result.workspacePath.startsWith(`${ctx.root}/`)).toBe(true);
+    expect(result.workspacePath).not.toBe(tamperedPath);
+    expect(existsSync(result.workspacePath)).toBe(true);
+
+    const rows = ctx.db.select().from(schema.agentWorkspaces).all();
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.workspacePath).toBe(result.workspacePath);
+  });
+
+  it("is idempotent across concurrent preparations of the same issue", async () => {
+    const inputs = {
+      db: ctx.db,
+      workspaceRoot: ctx.root,
+      agentSlug: "daapp",
+      agentId: "agt_1",
+      organizationId: "org_abc",
+      issue: { id: "iss_concur000", identifier: "HJ-200", title: "c" },
+    } as const;
+
+    const [a, b, c] = await Promise.all([
+      prepareIssueWorkspace(inputs),
+      prepareIssueWorkspace(inputs),
+      prepareIssueWorkspace(inputs),
+    ]);
+
+    expect(a.workspacePath).toBe(b.workspacePath);
+    expect(b.workspacePath).toBe(c.workspacePath);
+    const createdFlags = [a.created, b.created, c.created].filter(Boolean);
+    expect(createdFlags.length).toBe(1);
+
+    const rows = ctx.db.select().from(schema.agentWorkspaces).all();
+    expect(rows.length).toBe(1);
   });
 });

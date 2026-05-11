@@ -19,7 +19,7 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "..", "db
 async function setup() {
   const dir = mkdtempSync(join(tmpdir(), "lhb-orch-"));
   const workspaceRoot = mkdtempSync(join(tmpdir(), "lhb-orch-ws-"));
-  const { db } = createDb(`file:${join(dir, "t.db")}`);
+  const { db, close } = createDb(`file:${join(dir, "t.db")}`);
   migrate(db, { migrationsFolder });
   const svc = createAgentService({ db, encryptionKey: randomBytes(32) });
   const agent = await svc.create({
@@ -36,7 +36,7 @@ async function setup() {
     permissionPolicy: {},
   });
   const logger = createLogger({ level: "fatal" });
-  return { db, svc, agent, logger, dir, workspaceRoot };
+  return { db, close, svc, agent, logger, dir, workspaceRoot };
 }
 
 function insertJob(
@@ -90,6 +90,7 @@ describe("orchestrator tick", () => {
   });
 
   afterEach(() => {
+    ctx.close();
     rmSync(ctx.dir, { recursive: true, force: true });
     rmSync(ctx.workspaceRoot, { recursive: true, force: true });
   });

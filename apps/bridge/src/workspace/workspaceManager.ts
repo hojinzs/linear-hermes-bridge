@@ -65,35 +65,15 @@ export async function prepareIssueWorkspace(input: {
   organizationId: string;
   issue: { id: string; identifier: string; title: string };
 }): Promise<PrepareWorkspaceResult> {
+  // Recomputing the canonical path also re-validates that it stays under
+  // workspaceRoot, so any reused row whose stored path differs from this value
+  // is treated as stale/tampered and repaired below rather than trusted.
   const workspacePath = computeIssueWorkspacePath(input);
   const now = new Date().toISOString();
 
-  const existing = input.db
-    .select()
-    .from(schema.agentWorkspaces)
-    .where(
-      and(
-        eq(schema.agentWorkspaces.agentId, input.agentId),
-        eq(schema.agentWorkspaces.linearOrganizationId, input.organizationId),
-        eq(schema.agentWorkspaces.linearIssueId, input.issue.id),
-      ),
-    )
-    .get();
-
-  if (existing) {
-    if (!existsSync(existing.workspacePath)) {
-      mkdirSync(existing.workspacePath, { recursive: true });
-    }
-    input.db
-      .update(schema.agentWorkspaces)
-      .set({ lastUsedAt: now })
-      .where(eq(schema.agentWorkspaces.id, existing.id))
-      .run();
-    return { workspacePath: existing.workspacePath, created: false };
-  }
-
-  mkdirSync(workspacePath, { recursive: true });
-  input.db
+  // Idempotent upsert: insert-on-conflict-do-nothing + re-select makes
+  // preparation safe under concurrent runners racing on the same issue.
+  const insertResult = input.db
     .insert(schema.agentWorkspaces)
     .values({
       id: newId("ws"),
@@ -106,6 +86,47 @@ export async function prepareIssueWorkspace(input: {
       createdAt: now,
       lastUsedAt: now,
     })
+    .onConflictDoNothing()
     .run();
-  return { workspacePath, created: true };
+  const created = insertResult.changes > 0;
+
+  const row = input.db
+    .select()
+    .from(schema.agentWorkspaces)
+    .where(
+      and(
+        eq(schema.agentWorkspaces.agentId, input.agentId),
+        eq(schema.agentWorkspaces.linearOrganizationId, input.organizationId),
+        eq(schema.agentWorkspaces.linearIssueId, input.issue.id),
+      ),
+    )
+    .get();
+  if (!row) {
+    throw new Error("workspace row missing after insert/select");
+  }
+
+  let resolvedPath = row.workspacePath;
+  if (resolvedPath !== workspacePath) {
+    // Stored path doesn't match the canonical, root-confined path we just
+    // computed (stale workspaceRoot, tampered DB, or a renamed agent slug).
+    // Repair the row to the safe path rather than trusting on-disk state.
+    resolvedPath = workspacePath;
+    input.db
+      .update(schema.agentWorkspaces)
+      .set({ workspacePath: resolvedPath, lastUsedAt: now })
+      .where(eq(schema.agentWorkspaces.id, row.id))
+      .run();
+  } else if (!created) {
+    input.db
+      .update(schema.agentWorkspaces)
+      .set({ lastUsedAt: now })
+      .where(eq(schema.agentWorkspaces.id, row.id))
+      .run();
+  }
+
+  if (!existsSync(resolvedPath)) {
+    mkdirSync(resolvedPath, { recursive: true });
+  }
+
+  return { workspacePath: resolvedPath, created };
 }

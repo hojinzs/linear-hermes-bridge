@@ -7,9 +7,7 @@ import { asc, eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb, schema } from "../db/client.js";
-import type { HermesConnector } from "../hermes/connector.js";
 import { mockConnector } from "../hermes/mockConnector.js";
-import type { HermesRunInput, HermesRunResult } from "../hermes/types.js";
 import { mockWriter } from "../linear/mockWriter.js";
 import { createLogger } from "../logger.js";
 import { createAgentService } from "../services/agents.js";
@@ -20,7 +18,7 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "..", "db
 async function setup() {
   const dir = mkdtempSync(join(tmpdir(), "lhb-run-"));
   const workspaceRoot = mkdtempSync(join(tmpdir(), "lhb-run-ws-"));
-  const { db } = createDb(`file:${join(dir, "t.db")}`);
+  const { db, close } = createDb(`file:${join(dir, "t.db")}`);
   migrate(db, { migrationsFolder });
   const svc = createAgentService({ db, encryptionKey: randomBytes(32) });
   const agent = await svc.create({
@@ -72,13 +70,19 @@ async function setup() {
     })
     .run();
   const logger = createLogger({ level: "fatal" });
-  return { db, svc, agentId: agent.id, jobId, logger, workspaceRoot };
+  return { db, close, dir, svc, agentId: agent.id, jobId, logger, workspaceRoot };
 }
 
 describe("runAttempt", () => {
   let ctx: Awaited<ReturnType<typeof setup>>;
   beforeEach(async () => {
     ctx = await setup();
+  });
+
+  afterEach(() => {
+    ctx.close();
+    rmSync(ctx.dir, { recursive: true, force: true });
+    rmSync(ctx.workspaceRoot, { recursive: true, force: true });
   });
 
   it("creates a run_attempts row, emits lifecycle events, and finalizes succeeded", async () => {
