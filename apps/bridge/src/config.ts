@@ -32,6 +32,7 @@ const Schema = z.object({
     .transform((v) => v === "true")
     .default("false"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  WORKSPACE_ROOT: z.string().min(1).default("./data/workspaces"),
 });
 
 export type Config = {
@@ -43,6 +44,7 @@ export type Config = {
   appSecret: string;
   linearLive: boolean;
   logLevel: "fatal" | "error" | "warn" | "info" | "debug" | "trace";
+  workspaceRoot: string;
 };
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -60,5 +62,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     appSecret: parsed.data.APP_SECRET,
     linearLive: parsed.data.LINEAR_LIVE,
     logLevel: parsed.data.LOG_LEVEL,
+    workspaceRoot: parsed.data.WORKSPACE_ROOT,
   };
 }

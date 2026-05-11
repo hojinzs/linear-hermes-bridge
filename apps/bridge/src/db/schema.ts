@@ -134,6 +134,7 @@ export const runAttempts = sqliteTable(
     runnerId: text("runner_id"),
     status: text("status").notNull(),
     hermesSessionKey: text("hermes_session_key"),
+    workspacePath: text("workspace_path"),
     startedAt: text("started_at").notNull(),
     heartbeatAt: text("heartbeat_at"),
     endedAt: text("ended_at"),
@@ -142,6 +143,28 @@ export const runAttempts = sqliteTable(
   },
   (t) => ({
     uxJobAttempt: uniqueIndex("ux_attempts_job_attempt").on(t.agentRunJobId, t.attemptNumber),
+  }),
+);
+
+export const agentWorkspaces = sqliteTable(
+  "agent_workspaces",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    linearOrganizationId: text("linear_organization_id").notNull(),
+    linearIssueId: text("linear_issue_id").notNull(),
+    issueIdentifier: text("issue_identifier").notNull(),
+    workspacePath: text("workspace_path").notNull(),
+    status: text("status").notNull(),
+    createdAt: text("created_at").notNull(),
+    lastUsedAt: text("last_used_at").notNull(),
+  },
+  (t) => ({
+    uxWorkspaceIssue: uniqueIndex("ux_agent_workspaces_issue").on(
+      t.agentId,
+      t.linearOrganizationId,
+      t.linearIssueId,
+    ),
   }),
 );
 

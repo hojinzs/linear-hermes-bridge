@@ -13,6 +13,7 @@ type TickInput = {
   runnerId: string;
   config: OrchestratorConfig;
   agentService: AgentService;
+  workspaceRoot: string;
   buildConnector: (agent: {
     hermesConnectorType: string;
     hermesConnectorConfig: unknown;
@@ -132,6 +133,8 @@ export async function runOrchestratorTick(input: TickInput): Promise<void> {
         connector,
         writer,
         agentDisplayName: agent.displayName,
+        agentSlug: agent.slug,
+        workspaceRoot: input.workspaceRoot,
       });
     } catch (e) {
       outcome = { status: "failed" as const, error: (e as Error).message };

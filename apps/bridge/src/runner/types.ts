@@ -1,6 +1,7 @@
 export type RunnerEventType =
   | "claimed"
   | "context_loaded"
+  | "workspace_prepared"
   | "prompt_built"
   | "hermes_started"
   | "progress"

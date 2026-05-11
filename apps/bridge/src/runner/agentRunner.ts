@@ -5,6 +5,7 @@ import type { LinearWriter } from "../linear/writer.js";
 import type { AppLogger } from "../logger.js";
 import { buildHermesPrompt } from "../prompts/buildHermesPrompt.js";
 import { newId } from "../services/ids.js";
+import { prepareIssueWorkspace } from "../workspace/workspaceManager.js";
 import { appendRunnerEvent } from "./events.js";
 import type { RunnerOutcome } from "./types.js";
 
@@ -16,6 +17,8 @@ type RunInput = {
   connector: HermesConnector;
   writer: LinearWriter;
   agentDisplayName: string;
+  agentSlug: string;
+  workspaceRoot: string;
 };
 
 export async function runAttempt(input: RunInput): Promise<RunnerOutcome> {
@@ -80,6 +83,57 @@ export async function runAttempt(input: RunInput): Promise<RunnerOutcome> {
   });
 
   const issue = triggerInput.trigger.issue ?? { identifier: "?", title: "?", url: "" };
+
+  let workspacePath: string | undefined;
+  if (triggerInput.trigger.linearIssueId) {
+    try {
+      const prepared = await prepareIssueWorkspace({
+        db,
+        workspaceRoot: input.workspaceRoot,
+        agentSlug: input.agentSlug,
+        agentId: job.agentId,
+        organizationId: triggerInput.trigger.linearOrganizationId,
+        issue: {
+          id: triggerInput.trigger.linearIssueId,
+          identifier: issue.identifier,
+          title: issue.title,
+        },
+      });
+      workspacePath = prepared.workspacePath;
+      db.update(schema.runAttempts)
+        .set({ workspacePath })
+        .where(eq(schema.runAttempts.id, attemptId))
+        .run();
+      appendRunnerEvent({
+        db,
+        runAttemptId: attemptId,
+        agentRunJobId: job.id,
+        agentSessionId: job.agentSessionId,
+        eventType: "workspace_prepared",
+        payload: { workspacePath, created: prepared.created },
+      });
+    } catch (e) {
+      const err = (e as Error).message;
+      db.update(schema.runAttempts)
+        .set({ status: "failed", endedAt: now(), error: `workspace_prepare_failed: ${err}` })
+        .where(eq(schema.runAttempts.id, attemptId))
+        .run();
+      appendRunnerEvent({
+        db,
+        runAttemptId: attemptId,
+        agentRunJobId: job.id,
+        agentSessionId: job.agentSessionId,
+        eventType: "failed",
+        payload: { stage: "workspace_prepare", error: err },
+      });
+      logger.warn(
+        { tag: "runner.workspace_prepare_failed", agentRunJobId: job.id, err },
+        "workspace prepare failed",
+      );
+      return { status: "failed", error: `workspace_prepare_failed: ${err}` };
+    }
+  }
+
   const prompt = buildHermesPrompt({
     agentDisplayName: input.agentDisplayName,
     organizationId: triggerInput.trigger.linearOrganizationId,
@@ -114,6 +168,7 @@ export async function runAttempt(input: RunInput): Promise<RunnerOutcome> {
     prompt,
     userInstruction: triggerInput.trigger.userInstruction,
     hermesSessionKey: null,
+    ...(workspacePath ? { workspacePath } : {}),
     signal: ac.signal,
     onProgress: (ev) => {
       appendRunnerEvent({
