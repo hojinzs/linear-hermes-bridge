@@ -95,4 +95,92 @@ describe("cancellation", () => {
       .all();
     expect(attempts.length).toBe(0);
   });
+
+  it("aborts an in-flight run and marks the job canceled when cancel is requested mid-run", async () => {
+    const now = new Date().toISOString();
+    const id = "arj_cancel_run";
+    ctx.db
+      .insert(schema.agentRunJobs)
+      .values({
+        id,
+        agentId: ctx.agent.id,
+        agentSessionId: null,
+        webhookDeliveryId: null,
+        dedupeKey: id,
+        triggerType: "agent_session_prompted",
+        status: "queued",
+        priority: 0,
+        scheduledAt: now,
+        claimedBy: null,
+        claimedAt: null,
+        cancelRequestedAt: null,
+        attemptCount: 0,
+        input: {
+          agentId: ctx.agent.id,
+          trigger: {
+            type: "agent_session_prompted",
+            linearOrganizationId: "org_dev",
+            userInstruction: "please do slow work",
+          },
+        },
+        output: null,
+        error: null,
+        maxAttempts: 3,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    // Start the tick without awaiting; the slow mock connector keeps the run in
+    // flight (~5s) so we can request cancellation while it is running.
+    const tick = runOrchestratorTick({
+      db: ctx.db,
+      logger: ctx.logger,
+      runnerId: "t",
+      config: DEFAULT_ORCHESTRATOR_CONFIG,
+      agentService: ctx.svc,
+      buildConnector: () => mockConnector({ slow: true }),
+      buildWriter: ({ logger: l }) => mockWriter(l),
+    });
+
+    // Let the orchestrator claim the job and start the connector run.
+    await new Promise((r) => setTimeout(r, 500));
+    const running = ctx.db
+      .select()
+      .from(schema.agentRunJobs)
+      .where(eq(schema.agentRunJobs.id, id))
+      .get();
+    expect(running?.status).toBe("running");
+
+    // Request cancellation while the run is in flight.
+    ctx.db
+      .update(schema.agentRunJobs)
+      .set({ cancelRequestedAt: new Date().toISOString() })
+      .where(eq(schema.agentRunJobs.id, id))
+      .run();
+
+    await tick;
+
+    const job = ctx.db
+      .select()
+      .from(schema.agentRunJobs)
+      .where(eq(schema.agentRunJobs.id, id))
+      .get();
+    expect(job?.status).toBe("canceled");
+
+    const attempts = ctx.db
+      .select()
+      .from(schema.runAttempts)
+      .where(eq(schema.runAttempts.agentRunJobId, id))
+      .all();
+    expect(attempts.length).toBe(1);
+    expect(attempts[0]?.status).toBe("canceled");
+
+    const events = ctx.db
+      .select()
+      .from(schema.runnerEvents)
+      .where(eq(schema.runnerEvents.agentRunJobId, id))
+      .all();
+    expect(events.some((e) => e.eventType === "canceled")).toBe(true);
+  }, 15000);
 });

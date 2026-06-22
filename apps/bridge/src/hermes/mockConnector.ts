@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { HermesConnector } from "./connector.js";
 import type { HermesRunInput, HermesRunResult } from "./types.js";
 
+// Dev/smoke-only: `pnpm smoke -- --slow` appends this marker to the user
+// instruction so a single run is slow enough (5s) to exercise cancellation
+// (Scenario G) without making every run of the mock agent slow.
+export const SMOKE_SLOW_MARKER = "[[smoke-slow]]";
+
 function delay(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new Error("aborted"));
@@ -27,7 +32,8 @@ export function mockConnector(opts?: { slow?: boolean }): HermesConnector {
       return { ok: true, latencyMs: Date.now() - start };
     },
     async run(input: HermesRunInput): Promise<HermesRunResult> {
-      const ms = slow ? 5000 : 100 + Math.floor(Math.random() * 200);
+      const runSlow = slow || input.userInstruction.includes(SMOKE_SLOW_MARKER);
+      const ms = runSlow ? 5000 : 100 + Math.floor(Math.random() * 200);
       try {
         input.onProgress?.({ type: "heartbeat" });
         await delay(ms, input.signal);

@@ -9,6 +9,10 @@ import { prepareIssueWorkspace } from "../workspace/workspaceManager.js";
 import { appendRunnerEvent } from "./events.js";
 import type { RunnerOutcome } from "./types.js";
 
+// How often the runner polls the job row for a cancel request while a connector
+// run is in flight, so a running job can be aborted (not just a queued one).
+const CANCEL_POLL_MS = 200;
+
 type RunInput = {
   db: DbClient;
   logger: AppLogger;
@@ -153,6 +157,21 @@ export async function runAttempt(input: RunInput): Promise<RunnerOutcome> {
   });
 
   const ac = new AbortController();
+  // Watch for a cancel request landing on the job while the connector runs. The
+  // cancel API sets cancel_requested_at; we observe it here and abort the
+  // in-flight connector so a running job (not just a queued one) can be stopped.
+  let cancelObserved = false;
+  const cancelWatcher = setInterval(() => {
+    const row = db
+      .select({ cancelRequestedAt: schema.agentRunJobs.cancelRequestedAt })
+      .from(schema.agentRunJobs)
+      .where(eq(schema.agentRunJobs.id, job.id))
+      .get();
+    if (row?.cancelRequestedAt && !ac.signal.aborted) {
+      cancelObserved = true;
+      ac.abort();
+    }
+  }, CANCEL_POLL_MS);
   appendRunnerEvent({
     db,
     runAttemptId: attemptId,
@@ -161,30 +180,52 @@ export async function runAttempt(input: RunInput): Promise<RunnerOutcome> {
     eventType: "hermes_started",
     payload: { connectorType: input.connector.type },
   });
-  const result = await input.connector.run({
-    agentRunJobId: job.id,
-    runAttemptId: attemptId,
-    agentId: job.agentId,
-    prompt,
-    userInstruction: triggerInput.trigger.userInstruction,
-    hermesSessionKey: null,
-    ...(workspacePath ? { workspacePath } : {}),
-    signal: ac.signal,
-    onProgress: (ev) => {
-      appendRunnerEvent({
-        db,
-        runAttemptId: attemptId,
-        agentRunJobId: job.id,
-        agentSessionId: job.agentSessionId,
-        eventType: "progress",
-        payload: { type: ev.type, message: ev.message ?? null },
-      });
-      db.update(schema.runAttempts)
-        .set({ heartbeatAt: now() })
-        .where(eq(schema.runAttempts.id, attemptId))
-        .run();
-    },
-  });
+  let result: Awaited<ReturnType<typeof input.connector.run>>;
+  try {
+    result = await input.connector.run({
+      agentRunJobId: job.id,
+      runAttemptId: attemptId,
+      agentId: job.agentId,
+      prompt,
+      userInstruction: triggerInput.trigger.userInstruction,
+      hermesSessionKey: null,
+      ...(workspacePath ? { workspacePath } : {}),
+      signal: ac.signal,
+      onProgress: (ev) => {
+        appendRunnerEvent({
+          db,
+          runAttemptId: attemptId,
+          agentRunJobId: job.id,
+          agentSessionId: job.agentSessionId,
+          eventType: "progress",
+          payload: { type: ev.type, message: ev.message ?? null },
+        });
+        db.update(schema.runAttempts)
+          .set({ heartbeatAt: now() })
+          .where(eq(schema.runAttempts.id, attemptId))
+          .run();
+      },
+    });
+  } finally {
+    clearInterval(cancelWatcher);
+  }
+
+  if (cancelObserved) {
+    db.update(schema.runAttempts)
+      .set({ status: "canceled", endedAt: now(), error: "canceled" })
+      .where(eq(schema.runAttempts.id, attemptId))
+      .run();
+    appendRunnerEvent({
+      db,
+      runAttemptId: attemptId,
+      agentRunJobId: job.id,
+      agentSessionId: job.agentSessionId,
+      eventType: "canceled",
+      payload: {},
+    });
+    logger.info({ tag: "runner.canceled", agentRunJobId: job.id }, "attempt canceled mid-run");
+    return { status: "canceled" };
+  }
 
   if (!result.ok) {
     db.update(schema.runAttempts)
