@@ -89,7 +89,7 @@ pnpm smoke
 ```
 
 - [ ] Output `[smoke] agent_run_job arj_... accepted`
-- [ ] Output sequence `runner_events: claimed → context_loaded → prompt_built → hermes_started → progress → linear_response_posted → completed`
+- [ ] Output sequence `runner_events: claimed → context_loaded → workspace_prepared → prompt_built → hermes_started → progress → progress → linear_response_posted → completed`
 - [ ] Final line `[smoke] final status: succeeded`
 - [ ] Bridge log shows a line with `tag":"mock.linear.comment"` and the issue identifier `ENG-123`
 
@@ -118,7 +118,7 @@ pnpm smoke -- --slow &
 - [ ] Status `running`
 2. Click "Cancel".
 - [ ] Status transitions to `canceled` within ~5 seconds
-- [ ] Drawer shows a `canceled` (or `failed` with `aborted`) terminal event
+- [ ] Drawer shows a `canceled` terminal event
 
 ### H. Bad signature
 
