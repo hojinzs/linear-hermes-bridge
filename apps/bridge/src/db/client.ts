@@ -10,11 +10,14 @@ export type DbClient = ReturnType<typeof drizzle<typeof schema>>;
 // Resolve a relative `file:` DATABASE_URL against the repo root rather than the
 // process cwd. `pnpm dev` runs the bridge with cwd = apps/bridge while
 // scripts/dev-seed runs with cwd = repo root; without this they would open two
-// different SQLite files. Absolute paths (Docker uses file:/app/data/...) and
-// the in-memory database (":memory:") are left untouched.
+// different SQLite files. Absolute paths (Docker uses file:/app/data/...) are
+// left untouched, and any in-memory form (":memory:" or the
+// "file::memory:?cache=shared" URI used by tests) stays in memory instead of
+// being turned into an on-disk file in the repo root.
 function resolveDbPath(databaseUrl: string): string {
   const raw = databaseUrl.startsWith("file:") ? databaseUrl.slice("file:".length) : databaseUrl;
-  if (raw === ":memory:" || isAbsolute(raw)) return raw;
+  if (raw === ":memory:" || raw.startsWith(":memory:")) return ":memory:";
+  if (isAbsolute(raw)) return raw;
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
   return resolve(repoRoot, raw);
 }
