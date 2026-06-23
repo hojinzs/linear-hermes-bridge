@@ -156,12 +156,68 @@ echo <github-token-with-read:packages> | docker login ghcr.io -u <github-user> -
 
 ## High-level flow
 
-```text
-Linear / Browser
-  -> public HTTPS tunnel
-  -> linear-hermes-bridge container
-  -> local-only Hermes endpoint
-  -> Linear comment or Agent Activity response
+### Runtime — a Linear mention or delegation, end to end
+
+```mermaid
+flowchart TB
+    linear["Linear<br/>OAuth · webhooks · comments"]
+    browser["Admin browser"]
+    tunnel["Public HTTPS boundary<br/>Cloudflare Tunnel / reverse proxy"]
+
+    subgraph host["linear-hermes-bridge — single host / container"]
+        direction TB
+        edge["HTTP edge — Hono<br/>/webhooks/linear/:slug · /oauth/* · /api/*"]
+        webhook["Webhook receiver<br/>verify linear-signature → normalize → dedupe"]
+        queue[["Agent Run Queue<br/>agent_run_jobs"]]
+        orch["Orchestrator<br/>claim · concurrency · retry · cancel"]
+        runner["Agent Runner<br/>build prompt · emit runner_events"]
+        writer["Linear response writer<br/>mock ↔ live (LINEAR_LIVE)"]
+        ui["Admin Web UI + API<br/>agents · run jobs · cancel"]
+        db[("SQLite<br/>encrypted tokens · sessions · jobs · events")]
+    end
+
+    hermes["Hermes Agent — local only<br/>mock · localWebhook · apiServer"]
+
+    linear -->|"① signed webhook"| tunnel
+    tunnel --> edge --> webhook
+    webhook -->|"② idempotent enqueue"| queue
+    webhook -.->|"200/202 ACK ≤ 5s"| linear
+    queue -->|"③ claim + run_attempt"| orch
+    orch --> runner
+    runner -->|"④ invoke connector"| hermes
+    hermes -->|"⑤ result / progress"| runner
+    runner --> writer
+    writer ==>|"⑥ comment / Agent Activity (outbound)"| linear
+
+    browser -->|"Admin UI :5173 / via tunnel"| ui
+    ui <--> edge
+    webhook & queue & orch & runner & ui -.->|read / write| db
+```
+
+The bridge **ACKs the webhook within ~5s** (②) and runs the Hermes work
+asynchronously (③–⑥). Hermes is never exposed publicly — only the bridge is
+reachable through the tunnel, and the connector reaches Hermes over
+localhost/LAN. A duplicate webhook delivery is dropped by the dedupe key at ②,
+and a cancel request flips the job to `canceled` between ③ and ⑥.
+
+### OAuth install — one-time, per agent
+
+```mermaid
+flowchart TB
+    admin["Admin (browser)"]
+    ui["Bridge Admin UI"]
+    authorize["/oauth/authorize/:slug<br/>build Linear URL (actor=app)"]
+    linear["Linear OAuth consent"]
+    callback["/oauth/callback/:slug"]
+    store[("linear_installations<br/>encrypted access / refresh tokens")]
+
+    admin -->|"1. create agent + paste client id / secret / webhook secret"| ui
+    admin -->|"2. open install URL"| authorize
+    authorize -->|"3. redirect (actor=app)"| linear
+    linear -->|"4. admin approves → redirect with code"| callback
+    callback -->|"5. exchange code for token (outbound)"| linear
+    callback -->|"6. store encrypted installation"| store
+    store -->|"7. UI shows installed workspace + scopes"| ui
 ```
 
 Internal decomposition (Agent Run Queue → Orchestrator → Agent Runner → Hermes connector) is described in [`docs/architecture.md`](docs/architecture.md).
