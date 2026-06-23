@@ -21,10 +21,18 @@ async function main() {
   }
   let body = readFileSync(fixturePath, "utf8");
 
-  // Make slow runs unique to avoid dedupe collisions across re-runs
+  // Make slow runs unique to avoid dedupe collisions across re-runs, and append
+  // the slow marker to the prompt so the mock connector runs this one job slowly
+  // (5s) — long enough to cancel it mid-flight. The marker must match
+  // SMOKE_SLOW_MARKER in apps/bridge/src/hermes/mockConnector.ts.
   if (slow) {
     const obj = JSON.parse(body) as Record<string, unknown>;
     obj.deliveryId = `del_slow_${Date.now()}`;
+    const session = obj.agentSession as Record<string, unknown> | undefined;
+    if (session) {
+      const prompt = typeof session.prompt === "string" ? session.prompt : "";
+      session.prompt = `${prompt} [[smoke-slow]]`.trim();
+    }
     body = JSON.stringify(obj);
   }
 

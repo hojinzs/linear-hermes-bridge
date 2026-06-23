@@ -6,6 +6,7 @@ import { loadConfig } from "./config.js";
 import { createDb } from "./db/client.js";
 import { selectConnector } from "./hermes/selectConnector.js";
 import { selectWriter } from "./linear/selectWriter.js";
+import { loadEnvFromRepoRoot } from "./loadEnv.js";
 import { createLogger } from "./logger.js";
 import { startOrchestrator } from "./orchestrator/claimLoop.js";
 import { DEFAULT_ORCHESTRATOR_CONFIG } from "./orchestrator/types.js";
@@ -14,6 +15,7 @@ import { createAgentService } from "./services/agents.js";
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "db", "migrations");
 
+loadEnvFromRepoRoot();
 const config = loadConfig();
 const logger = createLogger({ level: config.logLevel });
 const { db } = createDb(config.databaseUrl);
